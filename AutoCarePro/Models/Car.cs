@@ -6,7 +6,6 @@ namespace AutoCarePro.Models
     {
         public string EngineType { get; set; }
         public string TransmissionType { get; set; }
-        public string FuelType { get; set; }
         public double FuelEfficiency { get; set; }
         public DateTime LastOilChange { get; set; }
         public double OilChangeMileage { get; set; }

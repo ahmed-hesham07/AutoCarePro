@@ -13,6 +13,7 @@ namespace AutoCarePro.Models
         public PriorityLevel Priority { get; set; }
         public bool IsAcknowledged { get; set; }
         public DateTime CreatedDate { get; set; }
+        public Vehicle Vehicle { get; set; }
     }
 
     public enum PriorityLevel

@@ -14,6 +14,12 @@ namespace AutoCarePro.Models
         public DateTime LastMaintenanceDate { get; set; }
         public List<MaintenanceRecord> MaintenanceHistory { get; set; }
         public List<MaintenanceRecommendation> Recommendations { get; set; }
+        public int UserId { get; set; }
+        public User User { get; set; }
+        public string LicensePlate { get; set; }
+        public string FuelType { get; set; }
+        public DateTime PurchaseDate { get; set; }
+        public string Notes { get; set; }
 
         public Vehicle()
         {

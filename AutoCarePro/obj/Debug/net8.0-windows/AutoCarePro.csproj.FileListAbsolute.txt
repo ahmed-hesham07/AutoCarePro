@@ -1,0 +1,12 @@
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.csproj.AssemblyReference.cache
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.Forms.CarInfoForm.resources
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.Forms.DashboardForm.resources
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.Forms.LoginForm.resources
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.Forms.MaintenanceEntryForm.resources
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.Forms.MaintenanceHistoryForm.resources
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.csproj.GenerateResource.cache
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.AssemblyInfoInputs.cache
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.AssemblyInfo.cs
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.csproj.CoreCompileInputs.cache
+C:\Users\Ahmed Hesham\Desktop\college\term 4\OOP\prj_week_15\AutoCarePro\AutoCarePro\obj\Debug\net8.0-windows\AutoCarePro.sourcelink.json
