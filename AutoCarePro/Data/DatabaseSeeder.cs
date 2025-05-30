@@ -19,7 +19,7 @@ namespace AutoCarePro.Data
                     FullName = "Car Owner",
                     Email = "carowner@example.com",
                     PhoneNumber = "1234567890",
-                    Type = "Car Owner"
+                    Type = UserType.CarOwner
                 });
 
                 db.AddUser(new User
@@ -29,7 +29,7 @@ namespace AutoCarePro.Data
                     FullName = "Maintenance Center",
                     Email = "maintenancecenter@example.com",
                     PhoneNumber = "0987654321",
-                    Type = "Maintenance Center"
+                    Type = UserType.MaintenanceCenter
                 });
             }
 
@@ -37,7 +37,7 @@ namespace AutoCarePro.Data
             var user = db.GetUsers().FirstOrDefault();
             if (user != null && !db.GetVehiclesByUserId(user.Id).Any())
             {
-                db.AddVehicle(new Vehicle
+                var car = new Car
                 {
                     UserId = user.Id,
                     Make = "Toyota",
@@ -47,41 +47,57 @@ namespace AutoCarePro.Data
                     VIN = "1HGCM82633A004352",
                     CurrentMileage = 50000,
                     FuelType = "Gasoline",
+                    Notes = "Sample vehicle",
+                    Type = VehicleType.Car,
                     TransmissionType = "Automatic",
                     Color = "White",
-                    Notes = "Sample vehicle"
-                });
+                    NumberOfDoors = 4,
+                    BodyStyle = "Sedan",
+                    EngineType = "4-Cylinder",
+                    User = user
+                };
+
+                db.AddVehicle(car);
             }
 
-            // Seed MaintenanceRecords
+            // Seed Maintenance Records
             var vehicle = db.GetVehiclesByUserId(user.Id).FirstOrDefault();
             if (vehicle != null && !db.GetMaintenanceRecords(vehicle.Id).Any())
             {
-                db.AddMaintenanceRecord(new MaintenanceRecord
+                var maintenanceRecord = new MaintenanceRecord
                 {
                     VehicleId = vehicle.Id,
-                    MaintenanceDate = DateTime.Now.AddMonths(-2),
+                    MaintenanceDate = DateTime.Now,
                     MaintenanceType = "Oil Change",
-                    Description = "Changed engine oil and filter",
-                    MileageAtMaintenance = 48000,
-                    Cost = 50,
-                    ServiceProvider = "QuickLube",
-                    Notes = "No issues"
-                });
+                    Description = "Regular oil change",
+                    MileageAtMaintenance = 50000,
+                    Cost = 50.00m,
+                    ServiceProvider = "Local Garage",
+                    Notes = "Regular maintenance",
+                    HasDiagnosisRecommendations = false,
+                    Vehicle = vehicle
+                };
+
+                db.AddMaintenanceRecord(maintenanceRecord);
             }
 
-            // Seed MaintenanceRecommendations
+            // Seed Maintenance Recommendations
             if (vehicle != null && !db.GetMaintenanceRecommendations(vehicle.Id).Any())
             {
-                db.AddMaintenanceRecommendation(new MaintenanceRecommendation
+                var recommendation = new MaintenanceRecommendation
                 {
                     VehicleId = vehicle.Id,
                     Component = "Brakes",
-                    Description = "Brake pads should be checked soon.",
-                    Priority = "Medium",
-                    RecommendedDate = DateTime.Now.AddMonths(1),
-                    IsCompleted = false
-                });
+                    Description = "Brake pads need replacement",
+                    Priority = PriorityLevel.High,
+                    RecommendedDate = DateTime.Now.AddDays(30),
+                    EstimatedCost = 200.00m,
+                    Notes = "Regular maintenance",
+                    IsCompleted = false,
+                    Vehicle = vehicle
+                };
+
+                db.AddMaintenanceRecommendation(recommendation);
             }
         }
     }

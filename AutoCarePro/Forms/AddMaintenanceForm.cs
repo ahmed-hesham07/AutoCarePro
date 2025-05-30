@@ -3,198 +3,511 @@ using System.Windows.Forms;
 using System.Drawing;
 using AutoCarePro.Models;
 using AutoCarePro.Services;
+using AutoCarePro.UI;
 
 namespace AutoCarePro.Forms
 {
-    // This form allows the user to add or edit a maintenance record for a vehicle
+    /// <summary>
+    /// Form that allows users to add or edit maintenance records for vehicles.
+    /// This form provides a user-friendly interface for:
+    /// 1. Adding new maintenance records with details like type, description, cost, etc.
+    /// 2. Editing existing maintenance records
+    /// 3. Adding diagnoses (for maintenance centers)
+    /// 4. Validating user input to ensure data quality
+    /// 
+    /// The form adapts its interface based on the user type:
+    /// - Regular users can add/edit maintenance records for their vehicles
+    /// - Maintenance centers can add records for any vehicle and include diagnoses
+    /// </summary>
     public partial class AddMaintenanceForm : Form
     {
-        // Fields to store information about the vehicle, user, and database
-        private readonly int _vehicleId; // The ID of the vehicle being maintained
+        // Core data fields for managing maintenance records
+        private readonly int _vehicleId;             // ID of the vehicle being maintained
         private readonly DatabaseService _dbService; // Service for database operations
-        private readonly User _currentUser; // The user currently logged in
-        // UI controls for data entry
-        private TextBox _descriptionTextBox;
-        private TextBox _mileageTextBox;
-        private TextBox _costTextBox;
-        private TextBox _providerTextBox;
-        private TextBox _notesTextBox;
-        private ComboBox _typeComboBox;
-        private DateTimePicker _datePicker;
-        private TextBox _ownerUsernameTextBox; // For maintenance centers to enter owner's username
-        private Button _addDiagnosisBtn; // For maintenance centers to add diagnosis
-        private readonly MaintenanceRecord _existingRecord; // If editing, the record being edited
+        private readonly User _currentUser;          // Currently logged-in user
+        private readonly MaintenanceRecord? _existingRecord; // Record being edited (if in edit mode)
+        private int _currentStep = 0;
+        private const int TotalSteps = 3;
 
-        // Constructor: initializes the form for adding or editing a maintenance record
-        public AddMaintenanceForm(int vehicleId, User currentUser, MaintenanceRecord existingRecord = null)
+        // UI controls for data entry and validation
+        private TextBox _descriptionTextBox = new();    // For entering maintenance description
+        private TextBox _mileageTextBox = new();        // For entering vehicle mileage
+        private TextBox _costTextBox = new();           // For entering maintenance cost
+        private TextBox _providerTextBox = new();       // For entering service provider name
+        private TextBox _notesTextBox = new();          // For additional maintenance notes
+        private ComboBox _typeComboBox = new();         // For selecting maintenance type
+        private DateTimePicker _datePicker = new();     // For selecting maintenance date
+        private TextBox _ownerUsernameTextBox = new();  // For maintenance centers to enter owner's username
+        private Button _addDiagnosisBtn = new();        // For maintenance centers to add diagnosis
+
+        // Wizard navigation controls
+        private Button _nextButton = new Button();
+        private Button _previousButton = new Button();
+        private Button _finishButton = new Button();
+        private Label _stepLabel = new Label();
+        private Panel _contentPanel = new Panel();
+        private System.Windows.Forms.Timer _fadeInTimer = new System.Windows.Forms.Timer();
+        private double _fadeStep = 0.08;
+
+        // Add at the top of the class
+        private Button _darkModeToggleBtn = new Button();
+        private Button _accentColorBtn = new Button();
+
+        /// <summary>
+        /// Initializes the maintenance form for adding or editing a record.
+        /// This constructor sets up the form based on whether it's being used to add a new record
+        /// or edit an existing one.
+        /// </summary>
+        /// <param name="vehicleId">ID of the vehicle to add maintenance for</param>
+        /// <param name="currentUser">The user currently logged in</param>
+        /// <param name="existingRecord">Optional: The record to edit if in edit mode</param>
+        public AddMaintenanceForm(int vehicleId, User currentUser, MaintenanceRecord? existingRecord = null)
         {
-            InitializeComponent(); // Set up the form's UI
-            _vehicleId = vehicleId; // Store the vehicle ID
-            _currentUser = currentUser; // Store the current user
-            _existingRecord = existingRecord; // Store the record if editing
-            _dbService = new DatabaseService(); // Create a new database service
-            InitializeForm(); // Set up the form layout and controls
+            InitializeComponent();
+            _vehicleId = vehicleId;
+            _currentUser = currentUser;
+            _existingRecord = existingRecord;
+            _dbService = new DatabaseService();
+            InitializeForm();
             if (existingRecord != null)
             {
-                LoadExistingRecord(); // If editing, load the record's data into the form
+                LoadExistingRecord();
             }
         }
 
-        // Set up the main layout and add all controls
+        /// <summary>
+        /// Sets up the main form layout and initializes all components.
+        /// This method creates a structured layout with input fields and action buttons.
+        /// The form is designed to be user-friendly and intuitive.
+        /// </summary>
         private void InitializeForm()
         {
-            // Set up the form window properties
-            this.Text = "Add Maintenance Record";
-            this.Size = new Size(500, 700);
+            // Configure main form properties
+            UIStyles.ApplyFormStyle(this);
+            this.Text = "Add Maintenance Record - Step 1 of 3";
+            this.Size = new Size(900, 700); // Increased height for better visibility
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
 
-            // Create a main panel to hold everything
+            // Add dark mode toggle and accent color picker (top-right)
+            _darkModeToggleBtn = new Button
+            {
+                Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙",
+                Width = 40,
+                Height = 40,
+                Top = 10,
+                Left = this.ClientSize.Width - 100,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            UIStyles.ApplyButtonStyle(_darkModeToggleBtn, true);
+            _darkModeToggleBtn.Click += (s, e) => {
+                ThemeManager.Instance.IsDarkMode = !ThemeManager.Instance.IsDarkMode;
+                _darkModeToggleBtn.Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙";
+                ThemeManager.Instance.ApplyTheme(this);
+                UIStyles.RefreshStyles(this);
+            };
+
+            _accentColorBtn = new Button
+            {
+                Text = "🎨",
+                Width = 40,
+                Height = 40,
+                Top = 10,
+                Left = this.ClientSize.Width - 50,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            UIStyles.ApplyButtonStyle(_accentColorBtn, true);
+            _accentColorBtn.Click += (s, e) => {
+                using (var colorDialog = new ColorDialog())
+                {
+                    colorDialog.Color = ThemeManager.Instance.AccentColor;
+                    if (colorDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        ThemeManager.Instance.SetAccentColor(colorDialog.Color);
+                        UIStyles.RefreshStyles(this);
+                    }
+                }
+            };
+
+            this.Controls.Add(_darkModeToggleBtn);
+            this.Controls.Add(_accentColorBtn);
+
+            // Fade-in animation
+            this.Opacity = 0;
+            _fadeInTimer = new System.Windows.Forms.Timer { Interval = 20 };
+            _fadeInTimer.Tick += (s, e) => {
+                if (this.Opacity < 1)
+                {
+                    this.Opacity += _fadeStep;
+                }
+                else
+                {
+                    this.Opacity = 1;
+                    _fadeInTimer.Stop();
+                }
+            };
+            this.Load += (s, e) => _fadeInTimer.Start();
+
+            // Create main layout panel
             var mainPanel = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 2,
-                Padding = new Padding(10)
+                RowCount = 3,
+                Padding = new Padding(20)
             };
 
-            // Create a panel for the form fields
-            var fieldsPanel = new Panel { Dock = DockStyle.Fill };
-            InitializeFields(fieldsPanel); // Add the input fields
+            // Step indicator
+            _stepLabel = new Label
+            {
+                Text = "Step 1: Basic Information",
+                Height = 40,
+                Dock = DockStyle.Top,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            UIStyles.ApplyLabelStyle(_stepLabel, true);
 
-            // Create a panel for the Save/Cancel buttons
-            var buttonsPanel = new FlowLayoutPanel
+            // Content panel for each step (with scrolling)
+            _contentPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                BackColor = UIStyles.Colors.Secondary
+            };
+
+            // Navigation buttons panel
+            var buttonPanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
-                Height = 50,
                 FlowDirection = FlowDirection.RightToLeft,
-                Padding = new Padding(10)
+                Height = 50,
+                Padding = new Padding(10),
+                BackColor = UIStyles.Colors.Secondary
             };
-            InitializeButtons(buttonsPanel); // Add the buttons
 
-            // Add the field and button panels to the main panel
-            mainPanel.Controls.Add(fieldsPanel);
-            mainPanel.Controls.Add(buttonsPanel);
+            // Initialize navigation buttons
+            _nextButton = new Button
+            {
+                Text = "Next",
+                Width = 100,
+                Height = 35
+            };
+            _nextButton.Click += NextButton_Click;
 
-            // Add the main panel to the form
+            _previousButton = new Button
+            {
+                Text = "Previous",
+                Width = 100,
+                Height = 35,
+                Enabled = false
+            };
+            _previousButton.Click += PreviousButton_Click;
+
+            _finishButton = new Button
+            {
+                Text = "Finish",
+                Width = 100,
+                Height = 35,
+                Visible = false
+            };
+            _finishButton.Click += FinishButton_Click;
+
+            buttonPanel.Controls.AddRange(new Control[] { _finishButton, _nextButton, _previousButton });
+
+            // Add controls to main panel
+            mainPanel.Controls.Add(_stepLabel);
+            mainPanel.Controls.Add(_contentPanel);
+            mainPanel.Controls.Add(buttonPanel);
+
             this.Controls.Add(mainPanel);
+
+            // Show first step
+            ShowStep(0);
         }
 
-        // Set up all the input fields for the form
-        private void InitializeFields(Panel panel)
+        private void ShowStep(int step)
+        {
+            _currentStep = step;
+            _contentPanel.Controls.Clear();
+
+            switch (step)
+            {
+                case 0:
+                    ShowBasicInfoStep();
+                    break;
+                case 1:
+                    ShowServiceDetailsStep();
+                    break;
+                case 2:
+                    ShowReviewStep();
+                    break;
+            }
+
+            // Update navigation buttons
+            _previousButton.Enabled = step > 0;
+            _nextButton.Visible = step < TotalSteps - 1;
+            _finishButton.Visible = step == TotalSteps - 1;
+
+            // Update step label
+            _stepLabel.Text = $"Step {step + 1} of {TotalSteps}: {GetStepTitle(step)}";
+        }
+
+        private string GetStepTitle(int step)
+        {
+            return step switch
+            {
+                0 => "Basic Information",
+                1 => "Service Details",
+                2 => "Review & Save",
+                _ => string.Empty
+            };
+        }
+
+        private void ShowBasicInfoStep()
         {
             var layout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 10,
-                Padding = new Padding(10)
+                RowCount = 2,
+                Padding = new Padding(20),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                BackColor = Color.White,
+                ColumnStyles = {
+                    new ColumnStyle(SizeType.Percent, 30),
+                    new ColumnStyle(SizeType.Percent, 70)
+                }
             };
 
-            // Maintenance Type dropdown
-            layout.Controls.Add(new Label { Text = "Maintenance Type:", AutoSize = true }, 0, 0);
+            // Maintenance Type field
+            var lblType = new Label { Text = "Maintenance Type:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblType);
+            layout.Controls.Add(lblType, 0, 0);
             _typeComboBox = new ComboBox
             {
-                Width = 200,
-                DropDownStyle = ComboBoxStyle.DropDownList
+                Width = 400,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Anchor = AnchorStyles.Left
             };
             _typeComboBox.Items.AddRange(new string[] { "Oil Change", "Brake Service", "Tire Rotation", "Engine Repair", "Other" });
             _typeComboBox.SelectedIndex = 0;
+            UIStyles.ApplyComboBoxStyle(_typeComboBox);
             layout.Controls.Add(_typeComboBox, 1, 0);
 
-            // Description textbox
-            layout.Controls.Add(new Label { Text = "Description:", AutoSize = true }, 0, 1);
-            _descriptionTextBox = new TextBox { Width = 200 };
+            // Description field
+            var lblDescription = new Label { Text = "Description:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblDescription);
+            layout.Controls.Add(lblDescription, 0, 1);
+            _descriptionTextBox = new TextBox { Width = 400, Anchor = AnchorStyles.Left };
+            UIStyles.ApplyTextBoxStyle(_descriptionTextBox);
             layout.Controls.Add(_descriptionTextBox, 1, 1);
 
-            // Mileage textbox
-            layout.Controls.Add(new Label { Text = "Mileage:", AutoSize = true }, 0, 2);
-            _mileageTextBox = new TextBox { Width = 200 };
-            layout.Controls.Add(_mileageTextBox, 1, 2);
+            _contentPanel.Controls.Add(layout);
+        }
 
-            // Cost textbox
-            layout.Controls.Add(new Label { Text = "Cost:", AutoSize = true }, 0, 3);
-            _costTextBox = new TextBox { Width = 200 };
-            layout.Controls.Add(_costTextBox, 1, 3);
+        private void ShowServiceDetailsStep()
+        {
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 4,
+                Padding = new Padding(20),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                BackColor = Color.White,
+                ColumnStyles = {
+                    new ColumnStyle(SizeType.Percent, 30),
+                    new ColumnStyle(SizeType.Percent, 70)
+                }
+            };
 
-            // Service Provider textbox
-            layout.Controls.Add(new Label { Text = "Service Provider:", AutoSize = true }, 0, 4);
-            _providerTextBox = new TextBox { Width = 200 };
-            layout.Controls.Add(_providerTextBox, 1, 4);
+            // Mileage field
+            var lblMileage = new Label { Text = "Mileage:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblMileage);
+            layout.Controls.Add(lblMileage, 0, 0);
+            _mileageTextBox = new TextBox { Width = 400, Anchor = AnchorStyles.Left };
+            UIStyles.ApplyTextBoxStyle(_mileageTextBox);
+            layout.Controls.Add(_mileageTextBox, 1, 0);
 
-            // Date picker
-            layout.Controls.Add(new Label { Text = "Date:", AutoSize = true }, 0, 5);
-            _datePicker = new DateTimePicker { Width = 200 };
-            layout.Controls.Add(_datePicker, 1, 5);
+            // Cost field
+            var lblCost = new Label { Text = "Cost:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblCost);
+            layout.Controls.Add(lblCost, 0, 1);
+            _costTextBox = new TextBox { Width = 400, Anchor = AnchorStyles.Left };
+            UIStyles.ApplyTextBoxStyle(_costTextBox);
+            layout.Controls.Add(_costTextBox, 1, 1);
 
-            // Notes textbox (multiline)
-            layout.Controls.Add(new Label { Text = "Notes:", AutoSize = true }, 0, 6);
+            // Service Provider field
+            var lblProvider = new Label { Text = "Service Provider:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblProvider);
+            layout.Controls.Add(lblProvider, 0, 2);
+            _providerTextBox = new TextBox { Width = 400, Anchor = AnchorStyles.Left };
+            UIStyles.ApplyTextBoxStyle(_providerTextBox);
+            layout.Controls.Add(_providerTextBox, 1, 2);
+
+            // Date field
+            var lblDate = new Label { Text = "Date:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblDate);
+            layout.Controls.Add(lblDate, 0, 3);
+            _datePicker = new DateTimePicker { Width = 400, Anchor = AnchorStyles.Left };
+            layout.Controls.Add(_datePicker, 1, 3);
+
+            _contentPanel.Controls.Add(layout);
+        }
+
+        private void ShowReviewStep()
+        {
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 3,
+                Padding = new Padding(20),
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                BackColor = Color.White,
+                ColumnStyles = {
+                    new ColumnStyle(SizeType.Percent, 30),
+                    new ColumnStyle(SizeType.Percent, 70)
+                }
+            };
+
+            // Notes field
+            var lblNotes = new Label { Text = "Notes:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblNotes);
+            layout.Controls.Add(lblNotes, 0, 0);
             _notesTextBox = new TextBox
             {
-                Width = 200,
+                Width = 400,
                 Height = 100,
-                Multiline = true
+                Multiline = true,
+                Anchor = AnchorStyles.Left
             };
-            layout.Controls.Add(_notesTextBox, 1, 6);
+            UIStyles.ApplyTextBoxStyle(_notesTextBox);
+            layout.Controls.Add(_notesTextBox, 1, 0);
 
-            // If the user is a maintenance center, add owner username and diagnosis button
-            if (_currentUser.Type == "Maintenance Center")
+            // Additional fields for maintenance centers
+            if (_currentUser.Type == UserType.MaintenanceCenter)
             {
-                layout.Controls.Add(new Label { Text = "Owner Username:", AutoSize = true }, 0, 7);
-                _ownerUsernameTextBox = new TextBox { Width = 200 };
-                layout.Controls.Add(_ownerUsernameTextBox, 1, 7);
+                // Owner username field
+                var lblOwner = new Label { Text = "Owner Username:", AutoSize = true };
+                UIStyles.ApplyLabelStyle(lblOwner);
+                layout.Controls.Add(lblOwner, 0, 1);
+                _ownerUsernameTextBox = new TextBox { Width = 400, Anchor = AnchorStyles.Left };
+                UIStyles.ApplyTextBoxStyle(_ownerUsernameTextBox);
+                layout.Controls.Add(_ownerUsernameTextBox, 1, 1);
 
-                // Button to open the diagnosis form
+                // Diagnosis button
                 _addDiagnosisBtn = new Button
                 {
                     Text = "Add Diagnosis",
-                    Width = 200
+                    Width = 200,
+                    Height = 35,
+                    Anchor = AnchorStyles.Left
                 };
+                UIStyles.ApplyButtonStyle(_addDiagnosisBtn, true);
                 _addDiagnosisBtn.Click += AddDiagnosisBtn_Click;
-                layout.Controls.Add(_addDiagnosisBtn, 1, 8);
+                layout.Controls.Add(_addDiagnosisBtn, 1, 2);
             }
 
-            panel.Controls.Add(layout);
+            _contentPanel.Controls.Add(layout);
         }
 
-        // Event handler for the Add Diagnosis button
+        private void NextButton_Click(object sender, EventArgs e)
+        {
+            if (ValidateCurrentStep())
+            {
+                ShowStep(_currentStep + 1);
+            }
+        }
+
+        private void PreviousButton_Click(object sender, EventArgs e)
+        {
+            ShowStep(_currentStep - 1);
+        }
+
+        private void FinishButton_Click(object sender, EventArgs e)
+        {
+            if (ValidateCurrentStep())
+            {
+                SaveMaintenanceRecord();
+            }
+        }
+
+        private bool ValidateCurrentStep()
+        {
+            switch (_currentStep)
+            {
+                case 0:
+                    if (string.IsNullOrWhiteSpace(_descriptionTextBox.Text))
+                    {
+                        MessageBox.Show("Please enter a description of the maintenance work.", "Validation Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return false;
+                    }
+                    break;
+
+                case 1:
+                    if (!int.TryParse(_mileageTextBox.Text, out int mileage) || mileage < 0)
+                    {
+                        MessageBox.Show("Please enter a valid mileage.", "Validation Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return false;
+                    }
+
+                    if (!decimal.TryParse(_costTextBox.Text, out decimal cost) || cost < 0)
+                    {
+                        MessageBox.Show("Please enter a valid cost.", "Validation Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return false;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(_providerTextBox.Text))
+                    {
+                        MessageBox.Show("Please enter the service provider.", "Validation Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return false;
+                    }
+                    break;
+
+                case 2:
+                    if (_currentUser.Type == UserType.MaintenanceCenter && string.IsNullOrWhiteSpace(_ownerUsernameTextBox.Text))
+                    {
+                        MessageBox.Show("Please enter the owner's username.", "Validation Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return false;
+                    }
+                    break;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Event handler for the Add Diagnosis button.
+        /// Opens a new diagnosis form for the current vehicle and user.
+        /// </summary>
+        /// <param name="sender">The object that triggered the event</param>
+        /// <param name="e">Event arguments</param>
         private void AddDiagnosisBtn_Click(object sender, EventArgs e)
         {
-            // Open the diagnosis form for this vehicle and user
             var diagnosisForm = new DiagnosisForm(_vehicleId, _currentUser.Id);
             if (diagnosisForm.ShowDialog() == DialogResult.OK)
             {
-                // Show a message if diagnosis was added successfully
                 MessageBox.Show("Diagnosis added successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
-        // Set up the Save and Cancel buttons
-        private void InitializeButtons(FlowLayoutPanel panel)
-        {
-            var saveButton = new Button
-            {
-                Text = "Save",
-                DialogResult = DialogResult.OK
-            };
-            saveButton.Click += SaveButton_Click;
-
-            var cancelButton = new Button
-            {
-                Text = "Cancel",
-                DialogResult = DialogResult.Cancel
-            };
-
-            panel.Controls.Add(cancelButton);
-            panel.Controls.Add(saveButton);
-        }
-
-        // If editing, load the existing record's data into the form fields
+        /// <summary>
+        /// Loads an existing maintenance record into the form for editing.
+        /// This method populates all form fields with the record's current values.
+        /// </summary>
         private void LoadExistingRecord()
         {
-            this.Text = "Edit Maintenance Record";
+            this.Text = "Edit Maintenance Record - Step 1 of 3";
             _typeComboBox.SelectedItem = _existingRecord.MaintenanceType;
             _descriptionTextBox.Text = _existingRecord.Description;
             _mileageTextBox.Text = _existingRecord.MileageAtMaintenance.ToString();
@@ -204,85 +517,47 @@ namespace AutoCarePro.Forms
             _notesTextBox.Text = _existingRecord.Notes;
         }
 
-        // Event handler for the Save button
-        private void SaveButton_Click(object sender, EventArgs e)
+        private void SaveMaintenanceRecord()
         {
             try
             {
-                // Validate that the description is not empty
-                if (string.IsNullOrWhiteSpace(_descriptionTextBox.Text))
+                // Create or update maintenance record
+                var record = _existingRecord ?? new MaintenanceRecord
                 {
-                    MessageBox.Show("Please enter a description.", "Validation Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
+                    Vehicle = _dbService.GetVehicleById(_vehicleId),
+                    MaintenanceType = _typeComboBox.SelectedItem.ToString(),
+                    Description = _descriptionTextBox.Text,
+                    ServiceProvider = _providerTextBox.Text,
+                    Notes = _notesTextBox.Text
+                };
 
-                // Validate that mileage is a valid decimal number
-                if (!decimal.TryParse(_mileageTextBox.Text, out decimal mileage))
-                {
-                    MessageBox.Show("Please enter a valid mileage.", "Validation Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-
-                // Validate that cost is a valid decimal number
-                if (!decimal.TryParse(_costTextBox.Text, out decimal cost))
-                {
-                    MessageBox.Show("Please enter a valid cost.", "Validation Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-
-                // If the user is a maintenance center, validate the owner's username
-                if (_currentUser.Type == "Maintenance Center")
-                {
-                    if (string.IsNullOrWhiteSpace(_ownerUsernameTextBox.Text))
-                    {
-                        MessageBox.Show("Please enter the owner's username.", "Validation Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return;
-                    }
-
-                    // Check if the owner exists in the database
-                    var owner = _dbService.GetUserByUsername(_ownerUsernameTextBox.Text);
-                    if (owner == null)
-                    {
-                        MessageBox.Show("Owner username not found.", "Validation Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return;
-                    }
-                }
-
-                // Create a new record or update the existing one
-                var record = _existingRecord ?? new MaintenanceRecord { VehicleId = _vehicleId };
-                record.MaintenanceType = _typeComboBox.SelectedItem.ToString();
-                record.Description = _descriptionTextBox.Text;
-                record.MileageAtMaintenance = mileage;
-                record.Cost = cost;
-                record.ServiceProvider = _providerTextBox.Text;
+                record.VehicleId = _vehicleId;
+                record.MileageAtMaintenance = int.Parse(_mileageTextBox.Text);
+                record.Cost = decimal.Parse(_costTextBox.Text);
                 record.MaintenanceDate = _datePicker.Value;
-                record.Notes = _notesTextBox.Text;
+                record.IsCompleted = true;
 
-                // If the user is a maintenance center, set the DiagnosedByUserId
-                if (_currentUser.Type == "Maintenance Center")
+                // Additional fields for maintenance centers
+                if (_currentUser.Type == UserType.MaintenanceCenter)
                 {
                     record.DiagnosedByUserId = _currentUser.Id;
                 }
 
-                // Save the record to the database
+                // Save to database
                 if (_existingRecord == null)
                 {
                     _dbService.AddMaintenanceRecord(record);
                 }
-                _dbService.SaveChanges();
+                else
+                {
+                    _dbService.UpdateMaintenanceRecord(record);
+                }
 
-                // Close the form and return OK
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             }
             catch (Exception ex)
             {
-                // Show an error message if something goes wrong
                 MessageBox.Show($"Error saving maintenance record: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }

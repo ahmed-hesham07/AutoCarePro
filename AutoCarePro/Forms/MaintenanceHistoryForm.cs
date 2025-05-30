@@ -5,34 +5,56 @@ using System.Windows.Forms;
 using System.Drawing;
 using AutoCarePro.Models;
 using AutoCarePro.Services;
+using System.Threading.Tasks;
+using AutoCarePro.UI;
 
 namespace AutoCarePro.Forms
 {
     /// <summary>
-    /// Form that displays the maintenance history for a specific vehicle
+    /// Form that displays the maintenance history for a specific vehicle.
+    /// This form provides a comprehensive interface for users to:
+    /// 1. View all maintenance records for their vehicle
+    /// 2. Filter records by type and date range
+    /// 3. View maintenance statistics and costs
+    /// 4. Export maintenance history to CSV
+    /// 5. Print maintenance records
+    /// 
+    /// The form is organized into three main sections:
+    /// - Filter panel: For filtering maintenance records
+    /// - Statistics panel: Shows summary information
+    /// - Maintenance list: Displays detailed maintenance records
     /// </summary>
     public partial class MaintenanceHistoryForm : Form
     {
         // Service instance for database operations
-        private readonly DatabaseService _dbService;
-        private readonly int _vehicleId;
-        private Vehicle _vehicle;
+        private readonly DatabaseService _dbService;  // Handles all database operations
+        private readonly int _vehicleId;             // ID of the vehicle being viewed
+        private Vehicle? _vehicle = null;
 
         // UI Controls for displaying and filtering maintenance history
-        private ListView _maintenanceList;     // Displays maintenance records
-        private ComboBox _filterTypeComboBox; // Filter by maintenance type
-        private DateTimePicker _startDatePicker; // Filter by date range
-        private DateTimePicker _endDatePicker;   // Filter by date range
-        private Button _applyFilterBtn;        // Apply filter button
-        private Button _exportBtn;             // Export to CSV button
-        private Button _printBtn;              // Print history button
-        private Label _totalCostLabel;         // Shows total maintenance cost
-        private Label _lastServiceLabel;       // Shows last service date
+        private ListView _maintenanceList = new ListView();
+        private ComboBox _filterTypeComboBox = new ComboBox();
+        private DateTimePicker _startDatePicker = new DateTimePicker();
+        private DateTimePicker _endDatePicker = new DateTimePicker();
+        private Button _applyFilterBtn = new Button();
+        private Button _exportBtn = new Button();
+        private Button _printBtn = new Button();
+        private Label _totalCostLabel = new Label();
+        private Label _lastServiceLabel = new Label();
+        private Button _darkModeToggleBtn = new Button();
+        private Button _accentColorBtn = new Button();
+        private System.Windows.Forms.Timer _fadeInTimer = new System.Windows.Forms.Timer();
+        private double _fadeStep = 0.08;
+
+        // Pagination state for printing
+        private int _printRecordIndex = 0;
 
         /// <summary>
-        /// Initializes the maintenance history form for a specific vehicle
+        /// Initializes the maintenance history form for a specific vehicle.
+        /// This constructor is called when creating a new instance of the form.
+        /// It sets up the database service, loads vehicle data, and initializes the UI.
         /// </summary>
-        /// <param name="vehicleId">ID of the vehicle to show history for</param>
+        /// <param name="vehicleId">ID of the vehicle to show maintenance history for</param>
         public MaintenanceHistoryForm(int vehicleId)
         {
             InitializeComponent();
@@ -44,7 +66,9 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Loads the vehicle data from the database
+        /// Loads the vehicle data from the database.
+        /// This method retrieves the vehicle information needed to display the form title
+        /// and validate that the vehicle exists.
         /// </summary>
         private void LoadVehicleData()
         {
@@ -57,17 +81,79 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Sets up the form layout and initializes all components
+        /// Sets up the form layout and initializes all components.
+        /// This method creates the three-panel layout and initializes all UI elements.
+        /// The form is designed to provide easy access to maintenance history and filtering options.
         /// </summary>
         private void InitializeForm()
         {
             // Configure main form properties
-            this.Text = $"Maintenance History - {_vehicle.Make} {_vehicle.Model}";
-            this.Size = new Size(1000, 600);
+            UIStyles.ApplyFormStyle(this);
+            this.Text = _vehicle != null ? $"Maintenance History - {_vehicle.Make} {_vehicle.Model}" : "Maintenance History";
+            this.Size = new Size(1200, 700);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
+
+            // Add dark mode toggle and accent color picker (top-right)
+            _darkModeToggleBtn = new Button
+            {
+                Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙",
+                Width = 40,
+                Height = 40,
+                Top = 10,
+                Left = this.ClientSize.Width - 100,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            UIStyles.ApplyButtonStyle(_darkModeToggleBtn, true);
+            _darkModeToggleBtn.Click += (s, e) => {
+                ThemeManager.Instance.IsDarkMode = !ThemeManager.Instance.IsDarkMode;
+                _darkModeToggleBtn.Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙";
+                ThemeManager.Instance.ApplyTheme(this);
+                UIStyles.RefreshStyles(this);
+            };
+
+            _accentColorBtn = new Button
+            {
+                Text = "🎨",
+                Width = 40,
+                Height = 40,
+                Top = 10,
+                Left = this.ClientSize.Width - 50,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            UIStyles.ApplyButtonStyle(_accentColorBtn, true);
+            _accentColorBtn.Click += (s, e) => {
+                using (var colorDialog = new ColorDialog())
+                {
+                    colorDialog.Color = ThemeManager.Instance.AccentColor;
+                    if (colorDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        ThemeManager.Instance.SetAccentColor(colorDialog.Color);
+                        UIStyles.RefreshStyles(this);
+                    }
+                }
+            };
+
+            this.Controls.Add(_darkModeToggleBtn);
+            this.Controls.Add(_accentColorBtn);
+
+            // Fade-in animation
+            this.Opacity = 0;
+            _fadeInTimer = new System.Windows.Forms.Timer { Interval = 20 };
+            _fadeInTimer.Tick += (s, e) => {
+                if (this.Opacity < 1)
+                {
+                    this.Opacity += _fadeStep;
+                }
+                else
+                {
+                    this.Opacity = 1;
+                    _fadeInTimer.Stop();
+                }
+            };
+            this.Load += (s, e) => _fadeInTimer.Start();
 
             // Create main layout panel
             var mainPanel = new TableLayoutPanel
@@ -78,16 +164,16 @@ namespace AutoCarePro.Forms
                 Padding = new Padding(10)
             };
 
-            // Create filter panel
-            var filterPanel = new Panel { Dock = DockStyle.Top, Height = 60 };
+            // Create filter panel for filtering maintenance records
+            var filterPanel = new Panel { Dock = DockStyle.Top, Height = 60, BackColor = UIStyles.Colors.Secondary };
             InitializeFilterPanel(filterPanel);
 
-            // Create statistics panel
-            var statsPanel = new Panel { Dock = DockStyle.Top, Height = 40 };
+            // Create statistics panel for showing summary information
+            var statsPanel = new Panel { Dock = DockStyle.Top, Height = 40, BackColor = UIStyles.Colors.Secondary };
             InitializeStatsPanel(statsPanel);
 
-            // Create maintenance list panel
-            var listPanel = new Panel { Dock = DockStyle.Fill };
+            // Create maintenance list panel for displaying records
+            var listPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White };
             InitializeMaintenanceList(listPanel);
 
             // Add panels to main layout
@@ -99,34 +185,45 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Initializes the filter panel with controls for filtering maintenance history
+        /// Initializes the filter panel with controls for filtering maintenance history.
+        /// This panel allows users to filter records by maintenance type and date range.
         /// </summary>
+        /// <param name="panel">The panel to initialize with filter controls</param>
         private void InitializeFilterPanel(Panel panel)
         {
+            // Create a flow layout panel for horizontal arrangement of controls
             var layout = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 FlowDirection = FlowDirection.LeftToRight,
-                Padding = new Padding(5)
+                Padding = new Padding(5),
+                BackColor = UIStyles.Colors.Secondary
             };
 
-            // Maintenance type filter
-            layout.Controls.Add(new Label { Text = "Type:", AutoSize = true });
+            // Maintenance type filter dropdown
+            var lblType = new Label { Text = "Type:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblType);
+            layout.Controls.Add(lblType);
             _filterTypeComboBox = new ComboBox
             {
                 Width = 120,
-                DropDownStyle = ComboBoxStyle.DropDownList
+                DropDownStyle = ComboBoxStyle.DropDownList  // Prevents user from typing in the combo box
             };
+            UIStyles.ApplyComboBoxStyle(_filterTypeComboBox);
             _filterTypeComboBox.Items.AddRange(new string[] { "All", "Oil Change", "Tire Rotation", "Brake Service", "Other" });
-            _filterTypeComboBox.SelectedIndex = 0;
+            _filterTypeComboBox.SelectedIndex = 0;  // Select "All" by default
             layout.Controls.Add(_filterTypeComboBox);
 
-            // Date range filters
-            layout.Controls.Add(new Label { Text = "From:", AutoSize = true });
+            // Date range filters with date pickers
+            var lblFrom = new Label { Text = "From:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblFrom);
+            layout.Controls.Add(lblFrom);
             _startDatePicker = new DateTimePicker { Width = 120 };
             layout.Controls.Add(_startDatePicker);
 
-            layout.Controls.Add(new Label { Text = "To:", AutoSize = true });
+            var lblTo = new Label { Text = "To:", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblTo);
+            layout.Controls.Add(lblTo);
             _endDatePicker = new DateTimePicker { Width = 120 };
             layout.Controls.Add(_endDatePicker);
 
@@ -136,6 +233,7 @@ namespace AutoCarePro.Forms
                 Text = "Apply Filter",
                 Width = 100
             };
+            UIStyles.ApplyButtonStyle(_applyFilterBtn, true);
             _applyFilterBtn.Click += ApplyFilterBtn_Click;
             layout.Controls.Add(_applyFilterBtn);
 
@@ -143,41 +241,54 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Initializes the statistics panel showing maintenance summary
+        /// Initializes the statistics panel showing maintenance summary.
+        /// This panel displays total maintenance cost and last service date,
+        /// along with buttons for exporting and printing.
         /// </summary>
+        /// <param name="panel">The panel to initialize with statistics and action buttons</param>
         private void InitializeStatsPanel(Panel panel)
         {
+            // Create a flow layout panel for horizontal arrangement of controls
             var layout = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 FlowDirection = FlowDirection.LeftToRight,
-                Padding = new Padding(5)
+                Padding = new Padding(5),
+                BackColor = UIStyles.Colors.Secondary
             };
 
-            // Total cost label
+            // Total cost label for displaying maintenance expenses
             _totalCostLabel = new Label { AutoSize = true };
+            UIStyles.ApplyLabelStyle(_totalCostLabel, true);
             layout.Controls.Add(_totalCostLabel);
 
-            layout.Controls.Add(new Label { Text = "|", AutoSize = true });
+            // Separator between statistics
+            var lblSep = new Label { Text = "|", AutoSize = true };
+            UIStyles.ApplyLabelStyle(lblSep);
+            layout.Controls.Add(lblSep);
 
-            // Last service label
+            // Last service label for displaying most recent maintenance date
             _lastServiceLabel = new Label { AutoSize = true };
+            UIStyles.ApplyLabelStyle(_lastServiceLabel);
             layout.Controls.Add(_lastServiceLabel);
 
-            // Export and print buttons
+            // Export button for saving history to CSV
             _exportBtn = new Button
             {
                 Text = "Export to CSV",
                 Width = 100
             };
+            UIStyles.ApplyButtonStyle(_exportBtn);
             _exportBtn.Click += ExportBtn_Click;
             layout.Controls.Add(_exportBtn);
 
+            // Print button for printing maintenance history
             _printBtn = new Button
             {
                 Text = "Print History",
                 Width = 100
             };
+            UIStyles.ApplyButtonStyle(_printBtn);
             _printBtn.Click += PrintBtn_Click;
             layout.Controls.Add(_printBtn);
 
@@ -185,10 +296,13 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Initializes the maintenance history list view
+        /// Initializes the maintenance history list view.
+        /// This list displays all maintenance records in a grid format with sortable columns.
         /// </summary>
+        /// <param name="panel">The panel to initialize with the maintenance list</param>
         private void InitializeMaintenanceList(Panel panel)
         {
+            // Create and configure the list view
             _maintenanceList = new ListView
             {
                 Dock = DockStyle.Fill,
@@ -196,8 +310,9 @@ namespace AutoCarePro.Forms
                 FullRowSelect = true,
                 GridLines = true
             };
+            UIStyles.ApplyListViewStyle(_maintenanceList);
 
-            // Add columns to list view
+            // Add columns to list view for displaying maintenance information
             _maintenanceList.Columns.Add("Date", 100);           // Maintenance date
             _maintenanceList.Columns.Add("Type", 100);          // Maintenance type
             _maintenanceList.Columns.Add("Description", 200);   // Maintenance description
@@ -210,29 +325,32 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Loads and displays maintenance history based on current filters
+        /// Loads and displays maintenance history based on current filters.
+        /// This method retrieves records from the database, applies any active filters,
+        /// and updates both the list view and statistics.
         /// </summary>
         private void LoadMaintenanceHistory()
         {
             try
             {
-                // Clear existing items
-                _maintenanceList.Items.Clear();
+                // Get all maintenance records for the vehicle
+                var records = _dbService.GetMaintenanceRecords(_vehicleId).ToList();
 
-                // Get maintenance records from database
-                var records = _dbService.GetMaintenanceRecords(_vehicleId);
-
-                // Apply filters
-                if (_filterTypeComboBox.SelectedIndex > 0)
+                // Apply type filter if selected
+                if (_filterTypeComboBox.SelectedItem != null && _filterTypeComboBox.SelectedItem.ToString() != "All")
                 {
-                    records = records.Where(r => r.MaintenanceType == _filterTypeComboBox.SelectedItem.ToString());
+                    records = records.Where(r => r.MaintenanceType == _filterTypeComboBox.SelectedItem.ToString()).ToList();
                 }
 
-                records = records.Where(r => r.MaintenanceDate >= _startDatePicker.Value &&
-                                          r.MaintenanceDate <= _endDatePicker.Value);
+                // Apply date range filter
+                records = records.Where(r => r.MaintenanceDate >= _startDatePicker.Value && 
+                                          r.MaintenanceDate <= _endDatePicker.Value).ToList();
 
-                // Sort by date (newest first)
-                records = records.OrderByDescending(r => r.MaintenanceDate);
+                // Sort records by date (most recent first)
+                records = records.OrderByDescending(r => r.MaintenanceDate).ToList();
+
+                // Clear existing items
+                _maintenanceList.Items.Clear();
 
                 // Add records to list view
                 foreach (var record in records)
@@ -263,7 +381,7 @@ namespace AutoCarePro.Forms
         private void UpdateStatistics(IEnumerable<MaintenanceRecord> records)
         {
             // Calculate total cost
-            var totalCost = records.Sum(r => r.Cost);
+            decimal totalCost = records.Sum(r => r.Cost);
             _totalCostLabel.Text = $"Total Cost: {totalCost:C}";
 
             // Get last service date
@@ -284,39 +402,62 @@ namespace AutoCarePro.Forms
         /// <summary>
         /// Handles click event for Export to CSV button
         /// </summary>
-        private void ExportBtn_Click(object sender, EventArgs e)
+        private async void ExportBtn_Click(object sender, EventArgs e)
         {
             try
             {
                 var saveDialog = new SaveFileDialog
                 {
                     Filter = "CSV Files (*.csv)|*.csv",
+                    Title = "Export Maintenance History",
                     FileName = $"Maintenance_History_{_vehicle.Make}_{_vehicle.Model}_{DateTime.Now:yyyyMMdd}.csv"
                 };
 
                 if (saveDialog.ShowDialog() == DialogResult.OK)
                 {
-                    // Create CSV content
-                    var csv = new System.Text.StringBuilder();
-                    csv.AppendLine("Date,Type,Description,Mileage,Cost,Provider,Notes");
+                    // Disable the export button and show progress
+                    _exportBtn.Enabled = false;
+                    _exportBtn.Text = "Exporting...";
+                    Application.DoEvents();
 
-                    foreach (ListViewItem item in _maintenanceList.Items)
+                    await Task.Run(() =>
                     {
-                        var line = string.Join(",", item.SubItems.Cast<ListViewItem.ListViewSubItem>()
-                            .Select(subItem => $"\"{subItem.Text}\""));
-                        csv.AppendLine(line);
-                    }
+                        using (var writer = new System.IO.StreamWriter(saveDialog.FileName))
+                        {
+                            // Write header
+                            writer.WriteLine("Date,Type,Description,Mileage,Cost,Provider,Notes");
+                            
+                            // Write data in chunks to prevent memory issues
+                            const int chunkSize = 100;
+                            for (int i = 0; i < _maintenanceList.Items.Count; i += chunkSize)
+                            {
+                                var chunk = _maintenanceList.Items.Cast<ListViewItem>()
+                                    .Skip(i)
+                                    .Take(chunkSize);
+                                
+                                foreach (var item in chunk)
+                                {
+                                    writer.WriteLine(string.Join(",", item.SubItems.Cast<ListViewItem.ListViewSubItem>()
+                                        .Select(subItem => $"\"{subItem.Text.Replace("\"", "\"\"")}\"")));
+                                }
+                            }
+                        }
+                    });
 
-                    // Save to file
-                    System.IO.File.WriteAllText(saveDialog.FileName, csv.ToString());
                     MessageBox.Show("Maintenance history exported successfully!", "Success",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error exporting to CSV: {ex.Message}", "Error",
+                MessageBox.Show($"Error exporting maintenance history: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                // Re-enable the export button and restore its text
+                _exportBtn.Enabled = true;
+                _exportBtn.Text = "Export to CSV";
             }
         }
 
@@ -327,12 +468,14 @@ namespace AutoCarePro.Forms
         {
             try
             {
+                _printRecordIndex = 0; // Reset before printing
                 var printDocument = new System.Drawing.Printing.PrintDocument();
                 printDocument.PrintPage += PrintDocument_PrintPage;
 
                 var printDialog = new PrintDialog
                 {
-                    Document = printDocument
+                    Document = printDocument,
+                    AllowSomePages = true
                 };
 
                 if (printDialog.ShowDialog() == DialogResult.OK)
@@ -342,7 +485,7 @@ namespace AutoCarePro.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error printing history: {ex.Message}", "Error",
+                MessageBox.Show($"Error printing maintenance history: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -352,43 +495,53 @@ namespace AutoCarePro.Forms
         /// </summary>
         private void PrintDocument_PrintPage(object sender, System.Drawing.Printing.PrintPageEventArgs e)
         {
-            var graphics = e.Graphics;
-            var font = new Font("Arial", 10);
-            var boldFont = new Font("Arial", 12, FontStyle.Bold);
-            var yPos = 50f;
-            var leftMargin = 50f;
-
-            // Print header
-            graphics.DrawString($"Maintenance History - {_vehicle.Make} {_vehicle.Model}", boldFont,
-                Brushes.Black, leftMargin, yPos);
-            yPos += 30;
-
-            // Print column headers
-            var xPos = leftMargin;
-            foreach (ColumnHeader column in _maintenanceList.Columns)
+            try
             {
-                graphics.DrawString(column.Text, boldFont, Brushes.Black, xPos, yPos);
-                xPos += column.Width;
+                // Set up fonts
+                var titleFont = new Font("Arial", 14, FontStyle.Bold);
+                var headerFont = new Font("Arial", 10, FontStyle.Bold);
+                var contentFont = new Font("Arial", 10);
+
+                // Print title
+                e.Graphics.DrawString($"Maintenance History - {_vehicle.Make} {_vehicle.Model}",
+                    titleFont, Brushes.Black, 50, 50);
+
+                // Print statistics
+                e.Graphics.DrawString(_totalCostLabel.Text, contentFont, Brushes.Black, 50, 80);
+                e.Graphics.DrawString(_lastServiceLabel.Text, contentFont, Brushes.Black, 50, 100);
+
+                // Print column headers
+                var y = 140;
+                var x = 50;
+                foreach (ColumnHeader column in _maintenanceList.Columns)
+                {
+                    e.Graphics.DrawString(column.Text, headerFont, Brushes.Black, x, y);
+                    x += column.Width;
+                }
+
+                // Print records with pagination
+                y = 160;
+                int recordsPerPage = (int)((e.MarginBounds.Height - (y - e.MarginBounds.Top)) / 20);
+                int recordCount = 0;
+                for (; _printRecordIndex < _maintenanceList.Items.Count && recordCount < recordsPerPage; _printRecordIndex++, recordCount++)
+                {
+                    x = 50;
+                    var item = _maintenanceList.Items[_printRecordIndex];
+                    foreach (ListViewItem.ListViewSubItem subItem in item.SubItems)
+                    {
+                        e.Graphics.DrawString(subItem.Text, contentFont, Brushes.Black, x, y);
+                        x += _maintenanceList.Columns[item.SubItems.IndexOf(subItem)].Width;
+                    }
+                    y += 20;
+                }
+
+                // If there are more records, indicate another page is needed
+                e.HasMorePages = _printRecordIndex < _maintenanceList.Items.Count;
             }
-            yPos += 20;
-
-            // Print records
-            foreach (ListViewItem item in _maintenanceList.Items)
+            catch (Exception ex)
             {
-                xPos = leftMargin;
-                foreach (ListViewItem.ListViewSubItem subItem in item.SubItems)
-                {
-                    graphics.DrawString(subItem.Text, font, Brushes.Black, xPos, yPos);
-                    xPos += _maintenanceList.Columns[item.SubItems.IndexOf(subItem)].Width;
-                }
-                yPos += 20;
-
-                // Check if we need a new page
-                if (yPos > e.MarginBounds.Bottom)
-                {
-                    e.HasMorePages = true;
-                    return;
-                }
+                MessageBox.Show($"Error printing page: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

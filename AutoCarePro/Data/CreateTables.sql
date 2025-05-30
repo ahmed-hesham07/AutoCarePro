@@ -63,7 +63,7 @@ CREATE TABLE Users (
     FullName NVARCHAR(100) NOT NULL,
     Email NVARCHAR(100) NOT NULL UNIQUE,
     PhoneNumber NVARCHAR(20),
-    Type NVARCHAR(20) NOT NULL DEFAULT 'Car Owner',  -- Added Type column
+    Type NVARCHAR(20) NOT NULL DEFAULT 'CarOwner',  -- No space, matches enum
     CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
     LastLoginAt DATETIME
 );

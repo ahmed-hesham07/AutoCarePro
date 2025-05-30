@@ -10,10 +10,27 @@ namespace AutoCarePro.Data
         public DbSet<Car> Cars { get; set; }
         public DbSet<MaintenanceRecord> MaintenanceRecords { get; set; }
         public DbSet<MaintenanceRecommendation> MaintenanceRecommendations { get; set; }
+        public DbSet<DiagnosisRecommendation> DiagnosisRecommendations { get; set; }
+        public DbSet<Appointment> Appointments { get; set; }
+        public DbSet<Review> Reviews { get; set; }
+        public DbSet<Service> Services { get; set; }
+
+        // Parameterless constructor for design-time and runtime use
+        public AutoCareProContext() : base()
+        {
+        }
+
+        public AutoCareProContext(DbContextOptions<AutoCareProContext> options) : base(options)
+        {
+        }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlServer(@"Server=localhost\SQLEXPRESS;Database=AutoCarePro;Trusted_Connection=True;");
+            if (!optionsBuilder.IsConfigured)
+            {
+                // Use SQLite instead of SQL Server
+                optionsBuilder.UseSqlite("Data Source=AutoCarePro.db");
+            }
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -29,8 +46,9 @@ namespace AutoCarePro.Data
 
             modelBuilder.Entity<User>()
                 .Property(u => u.Type)
+                .HasConversion<string>()
                 .IsRequired()
-                .HasDefaultValue("CarOwner");
+                .HasDefaultValue(UserType.CarOwner);
 
             // Vehicle Configuration
             modelBuilder.Entity<Vehicle>()
@@ -49,6 +67,32 @@ namespace AutoCarePro.Data
                 .HasOne(r => r.Vehicle)
                 .WithMany(v => v.Recommendations)
                 .HasForeignKey(r => r.VehicleId);
+
+            // Diagnosis Recommendation Configuration
+            modelBuilder.Entity<DiagnosisRecommendation>()
+                .HasOne(d => d.MaintenanceRecord)
+                .WithMany(m => m.DiagnosisRecommendations)
+                .HasForeignKey(d => d.MaintenanceRecordId);
+
+            // Review Configuration
+            modelBuilder.Entity<Review>()
+                .HasOne(r => r.ServiceProvider)
+                .WithMany()
+                .HasForeignKey(r => r.ServiceProviderId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Review>()
+                .HasOne(r => r.Customer)
+                .WithMany()
+                .HasForeignKey(r => r.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Service Configuration
+            modelBuilder.Entity<Service>()
+                .HasOne(s => s.ServiceProvider)
+                .WithMany()
+                .HasForeignKey(s => s.ServiceProviderId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
-} 
+}

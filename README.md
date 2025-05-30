@@ -1,346 +1,310 @@
-# AutoCarePro - Vehicle Maintenance Tracker
+# AutoCarePro - Vehicle Maintenance Management System
 
-## Project Overview
-AutoCarePro is a desktop application designed to help car owners and maintenance centers track vehicle maintenance schedules, expenses, and diagnostics. The application provides automated maintenance recommendations and priority-based alerts to ensure vehicles are properly maintained.
+## Overview
+AutoCarePro is a comprehensive desktop application designed to streamline vehicle maintenance management for both car owners and maintenance centers. The system provides a user-friendly interface for tracking vehicle maintenance history, managing maintenance records, and facilitating communication between car owners and maintenance centers.
 
-## Features
-- User authentication (Car Owners and Maintenance Centers)
-- Vehicle management and tracking
-- Maintenance history recording
+### Problem Statement
+Vehicle maintenance management faces several challenges:
+- Difficulty in tracking maintenance history across multiple service providers
+- Lack of centralized record-keeping for vehicle owners
+- Inefficient communication between car owners and maintenance centers
+- Manual tracking of maintenance schedules and recommendations
+- Security concerns with sensitive vehicle and user data
+
+### Solution
+AutoCarePro addresses these challenges by providing:
+- Centralized maintenance history tracking
 - Automated maintenance recommendations
-- Priority-based alerts
-- Maintenance cost tracking
-- Service provider management
-- Diagnosis and real-time recommendations (for maintenance centers)
-- Data export (CSV)
+- Secure user authentication and data protection
+- Role-based access control for different user types
+- Modern, intuitive interface with theme support
 
-## User Type Abilities and Access Levels
+## Key Features
 
-### 1. Car Owner
-- **Dashboard:**
-  - View their own vehicles.
-  - See maintenance recommendations and alerts for their vehicles.
-  - Quick actions: Add vehicle, add maintenance record, view maintenance history.
+### User Management
+- **Multi-User Support**: Three distinct user types:
+  - Car Owners: Manage their vehicles and maintenance records
+  - Maintenance Centers: Handle maintenance services and recommendations
+  - Administrators: Full system access and management
+- **Secure Authentication**:
+  - Password hashing using SHA256
+  - Session management with "Remember Me" functionality
+  - Password reset capabilities
+  - Role-based access control
+- **User Profile Management**:
+  - Profile information editing
+  - Password changes
+  - Account preferences
+  - Activity history
 
-- **Vehicle Management:**
-  - Add new vehicles.
-  - Edit or delete their own vehicles.
-  - View detailed vehicle information.
+### Vehicle Management
+- **Vehicle Profiles**:
+  - Make, model, and year tracking
+  - VIN (Vehicle Identification Number) validation
+  - Mileage tracking
+  - Maintenance history
+- **Maintenance Records**:
+  - Service history tracking
+  - Cost tracking
+  - Maintenance date logging
+  - Service provider information
+- **Maintenance Analytics**:
+  - Cost per mile calculations
+  - Service frequency analysis
+  - Maintenance cost trends
+  - Service provider performance metrics
 
-- **Maintenance Records:**
-  - Add maintenance records for their vehicles.
-  - View maintenance history for their vehicles.
-  - Filter and sort maintenance records.
+### Maintenance Center Features
+- **Service Management**:
+  - Maintenance recommendations
+  - Diagnosis recommendations
+  - Priority-based service scheduling
+  - Cost estimation
+- **Customer Management**:
+  - Vehicle history access
+  - Service history tracking
+  - Customer communication tools
+- **Diagnostic Tools**:
+  - Vehicle condition assessment
+  - Maintenance requirement analysis
+  - Cost estimation tools
+  - Service scheduling optimization
 
-- **Recommendations:**
-  - View automated maintenance recommendations (e.g., oil change alerts).
-  - Mark recommendations as completed.
+### Security Features
+- **Data Protection**:
+  - Encrypted password storage
+  - Secure session management
+  - Input validation and sanitization
+  - Role-based access control
+- **User Privacy**:
+  - Protected user information
+  - Secure data transmission
+  - Access control for sensitive data
+- **Audit Trail**:
+  - User activity logging
+  - System access tracking
+  - Data modification history
+  - Security event monitoring
 
-- **Data Export:**
-  - Export maintenance history to CSV.
+### UI/UX Features
+- **Modern Interface**:
+  - Clean and intuitive design
+  - Consistent styling across forms
+  - Responsive layout
+- **Wizard-Style Forms**:
+  - Step-by-step wizard interfaces for complex data entry
+  - Implemented in AddVehicleForm, AddMaintenanceForm, DiagnosisForm, and the new RecommendationForm
+  - Improved navigation, validation, and user guidance for multi-step processes
+- **Theme Support**:
+  - Light and dark mode
+  - Customizable color schemes
+  - Standardized control styling
+- **User Experience**:
+  - Form validation with clear feedback
+  - Intuitive navigation
+  - Consistent control placement
+- **Accessibility**:
+  - High contrast themes
+  - Scalable text
+  - Keyboard navigation
+  - Screen reader support
 
-### 2. Maintenance Center
-- **Dashboard:**
-  - View all vehicles (from all car owners).
-  - See maintenance recommendations and alerts for all vehicles.
-  - Quick actions: Add maintenance record, view maintenance history.
+## Technical Architecture
 
-- **Vehicle Management:**
-  - View all vehicles (cannot add, edit, or delete vehicles).
-  - View detailed vehicle information for any vehicle.
+### Backend
+- **Database**:
+  - SQLite database for data storage
+  - Entity Framework Core for ORM
+  - Automatic database migrations
+  - Backup and restore functionality
+- **Services**:
+  - DatabaseService: Core data operations
+  - AuthenticationService: User authentication
+  - ValidationService: Data validation
+  - ThemeManager: UI styling and theming
+  - RoleBasedAccessControl: Permission management
+- **Data Models**:
+  - User: Authentication and profile information
+  - Vehicle: Vehicle details and specifications
+  - MaintenanceRecord: Service history and costs
+  - MaintenanceRecommendation: Service suggestions
+  - DiagnosisRecommendation: Diagnostic findings
 
-- **Maintenance Records:**
-  - Add maintenance records for any vehicle.
-  - View maintenance history for any vehicle.
-  - Filter and sort maintenance records.
-  - Enter car owner's username/ID when adding maintenance records to prevent conflicts.
-  - Link maintenance records to specific car owners for better tracking.
+### Frontend
+- **Windows Forms Application**:
+  - C# .NET Framework
+  - Modern UI components
+  - Responsive design
+  - Theme support
+- **Form Components**:
+  - LoginForm: User authentication
+  - UserProfileForm: Profile management
+  - VehicleForm: Vehicle information
+  - MaintenanceForm: Service records
+  - DashboardForm: System overview
+  - **AddVehicleForm (Wizard)**: Guided vehicle entry
+  - **AddMaintenanceForm (Wizard)**: Step-by-step maintenance record entry
+  - **DiagnosisForm (Wizard)**: Multi-step vehicle diagnosis
+  - **RecommendationForm (Wizard)**: Guided maintenance recommendation entry
+- **UI Components**:
+  - Custom controls for consistent styling
+  - Theme-aware components
+  - Responsive layouts
+  - Error handling and validation
 
-- **Recommendations:**
-  - View automated maintenance recommendations for all vehicles.
-  - Mark recommendations as completed.
-  - Add real-time recommendations during vehicle diagnosis.
-  - Create immediate maintenance alerts for critical issues (e.g., engine fan needs replacement).
-  - Track diagnosis-based recommendations separately from automated ones.
-
-- **Diagnosis Features:**
-  - Add recommendations while performing vehicle diagnosis.
-  - Create immediate maintenance alerts for critical issues.
-  - Link recommendations to specific maintenance records.
-  - Set priority levels for diagnosis-based recommendations.
-
-- **Data Export:**
-  - Export maintenance history to CSV for any vehicle.
-  - Export diagnosis reports with recommendations.
-
-### Summary Table
-| Feature                        | Car Owner | Maintenance Center |
-|--------------------------------|-----------|-------------------|
-| View Own Vehicles              | ✅         | ❌                 |
-| View All Vehicles              | ❌         | ✅                 |
-| Add Vehicle                    | ✅         | ❌                 |
-| Edit/Delete Vehicle            | ✅         | ❌                 |
-| Add Maintenance Record         | ✅         | ✅                 |
-| View Maintenance History       | ✅         | ✅                 |
-| View Recommendations           | ✅         | ✅                 |
-| Export Data                    | ✅         | ✅                 |
-| Add Diagnosis Recommendations  | ❌         | ✅                 |
-| Link Records to Owners         | ❌         | ✅                 |
+### Security
+- **Authentication**:
+  - SHA256 password hashing
+  - Session management
+  - Password reset functionality
+- **Authorization**:
+  - Role-based access control
+  - Permission-based operations
+  - User type restrictions
+- **Data Security**:
+  - Input validation
+  - SQL injection prevention
+  - XSS protection
+  - CSRF protection
 
 ## Project Structure
 ```
 AutoCarePro/
-├── Models/
-│   ├── Vehicle.cs (Base class)
-│   ├── Car.cs (Inherits from Vehicle)
-│   ├── MaintenanceRecord.cs
-│   ├── MaintenanceRecommendation.cs
-│   ├── DiagnosisRecommendation.cs
-│   └── User.cs
-├── Forms/
+├── Forms/                 # Windows Forms
 │   ├── LoginForm.cs
-│   ├── CarInfoForm.cs
-│   ├── MaintenanceEntryForm.cs
-│   ├── DashboardForm.cs
-│   ├── MaintenanceHistoryForm.cs
+│   ├── UserProfileForm.cs
+│   ├── ChangePasswordForm.cs
+│   ├── AddVehicleForm.cs
 │   ├── AddMaintenanceForm.cs
-│   └── DiagnosisForm.cs
-└── Services/
-    ├── DatabaseService.cs
-    └── RecommendationEngine.cs
+│   ├── DiagnosisForm.cs
+│   ├── RecommendationForm.cs
+│   └── ...
+├── Models/               # Data Models
+│   ├── User.cs
+│   ├── Vehicle.cs
+│   ├── MaintenanceRecord.cs
+│   └── ...
+├── Services/            # Business Logic
+│   ├── DatabaseService.cs
+│   ├── AuthenticationService.cs
+│   ├── ValidationService.cs
+│   └── ...
+└── Data/               # Data Access
+    └── AutoCareProContext.cs
 ```
 
-## Database Schema Overview
+## Implementation Details
 
-### Tables and Columns
+### Database Design
+- **Users Table**:
+  - User authentication details
+  - Profile information
+  - Role and permissions
+- **Vehicles Table**:
+  - Vehicle specifications
+  - Owner information
+  - Maintenance history
+- **Maintenance Records**:
+  - Service details
+  - Cost information
+  - Service provider data
+- **Recommendations**:
+  - Maintenance suggestions
+  - Diagnostic findings
+  - Priority levels
 
-#### 1. Users
-| Column         | Type             | Description                |
-|---------------|------------------|----------------------------|
-| Id            | INT (PK)         | User ID (Primary Key)      |
-| Username      | NVARCHAR(50)     | Unique username            |
-| Password      | NVARCHAR(100)    | Hashed password            |
-| FullName      | NVARCHAR(100)    | Full name                  |
-| Email         | NVARCHAR(100)    | Unique email address       |
-| PhoneNumber   | NVARCHAR(20)     | Phone number               |
-| CreatedAt     | DATETIME         | Account creation date      |
-| LastLoginAt   | DATETIME         | Last login date            |
-| Type          | NVARCHAR(30)     | User type (Car Owner, Maintenance Center) |
+### Service Layer
+- **DatabaseService**:
+  - CRUD operations
+  - Data validation
+  - Transaction management
+- **AuthenticationService**:
+  - User authentication
+  - Session management
+  - Password handling
+- **ValidationService**:
+  - Input validation
+  - Business rule enforcement
+  - Error handling
 
-#### 2. Vehicles
-| Column           | Type             | Description                        |
-|------------------|------------------|------------------------------------|
-| Id               | INT (PK)         | Vehicle ID (Primary Key)           |
-| UserId           | INT (FK)         | References Users(Id)               |
-| Make             | NVARCHAR(50)     | Manufacturer                       |
-| Model            | NVARCHAR(50)     | Model                              |
-| Year             | INT              | Year of manufacture                |
-| LicensePlate     | NVARCHAR(20)     | License plate                      |
-| VIN              | NVARCHAR(17)     | Vehicle Identification Number      |
-| CurrentMileage   | DECIMAL(10,2)    | Current mileage                    |
-| LastServiceDate  | DATETIME         | Last service date                  |
-| NextServiceDate  | DATETIME         | Next service date                  |
-| FuelType         | NVARCHAR(20)     | Fuel type                          |
-| TransmissionType | NVARCHAR(20)     | Transmission type                  |
-| Color            | NVARCHAR(30)     | Color                              |
-| Notes            | NVARCHAR(MAX)    | Additional notes                   |
-| CreatedAt        | DATETIME         | Record creation date               |
-| UpdatedAt        | DATETIME         | Last update date                   |
+### UI Implementation
+- **Form Design**:
+  - Consistent layout
+  - Responsive controls
+  - Error handling
+- **Theme System**:
+  - Light/dark mode
+  - Color schemes
+  - Control styling
+- **User Experience**:
+  - Intuitive navigation
+  - Clear feedback
+  - Help system
 
-#### 3. MaintenanceRecords
-| Column               | Type             | Description                        |
-|----------------------|------------------|------------------------------------|
-| Id                   | INT (PK)         | Record ID (Primary Key)            |
-| VehicleId            | INT (FK)         | References Vehicles(Id)            |
-| MaintenanceDate      | DATETIME         | Date of maintenance                |
-| MaintenanceType      | NVARCHAR(50)     | Type of maintenance                |
-| Description          | NVARCHAR(200)    | Description of work                |
-| MileageAtMaintenance | DECIMAL(10,2)    | Mileage at maintenance             |
-| Cost                 | DECIMAL(10,2)    | Cost of maintenance                |
-| ServiceProvider      | NVARCHAR(100)    | Service provider                   |
-| Notes                | NVARCHAR(MAX)    | Additional notes                   |
-| CreatedAt            | DATETIME         | Record creation date               |
-| UpdatedAt            | DATETIME         | Last update date                   |
-| DiagnosedByUserId    | INT (FK, NULL)   | References Users(Id), nullable     |
-| HasDiagnosisRecommendations | BIT        | If there are diagnosis-based recs  |
+## Setup and Installation
 
-#### 4. MaintenanceRecommendations
-| Column           | Type             | Description                        |
-|------------------|------------------|------------------------------------|
-| Id               | INT (PK)         | Recommendation ID (Primary Key)    |
-| VehicleId        | INT (FK)         | References Vehicles(Id)            |
-| Component        | NVARCHAR(50)     | Component needing attention        |
-| Description      | NVARCHAR(200)    | Recommendation details             |
-| Priority         | NVARCHAR(20)     | Priority (e.g., Critical, Medium)  |
-| RecommendedDate  | DATETIME         | When to perform maintenance        |
-| IsCompleted      | BIT              | Whether completed                  |
-| CreatedAt        | DATETIME         | Record creation date               |
-| UpdatedAt        | DATETIME         | Last update date                   |
+### Prerequisites
+- Windows operating system
+- .NET Framework 4.7.2 or higher
+- Visual Studio 2019 or higher
+- SQLite runtime
 
-#### 5. DiagnosisRecommendations
-| Column               | Type             | Description                        |
-|----------------------|------------------|------------------------------------|
-| Id                   | INT (PK)         | Diagnosis Recommendation ID        |
-| MaintenanceRecordId  | INT (FK)         | References MaintenanceRecords(Id)  |
-| DiagnosedByUserId    | INT (FK)         | References Users(Id)               |
-| Component            | NVARCHAR(50)     | Component needing attention        |
-| Description          | NVARCHAR(200)    | Recommendation details             |
-| Priority             | NVARCHAR(20)     | Priority (Critical, High, etc.)    |
-| EstimatedCost        | DECIMAL(10,2)    | Estimated cost to fix              |
-| RecommendedDate      | DATETIME         | When to perform maintenance        |
-| IsCompleted          | BIT              | Whether completed                  |
-| CreatedAt            | DATETIME         | Record creation date               |
-| UpdatedAt            | DATETIME         | Last update date                   |
-
-### Relationships
-- **Users (1) — (M) Vehicles:** Each user can have multiple vehicles. Each vehicle belongs to one user.
-- **Vehicles (1) — (M) MaintenanceRecords:** Each vehicle can have multiple maintenance records. Each record is linked to one vehicle.
-- **Vehicles (1) — (M) MaintenanceRecommendations:** Each vehicle can have multiple recommendations. Each recommendation is linked to one vehicle.
-- **MaintenanceRecords (1) — (M) DiagnosisRecommendations:** Each maintenance record can have multiple diagnosis recommendations.
-
-**Legend:**
-- (PK): Primary Key
-- (FK): Foreign Key
-- (1): One
-- (M): Many
-
-## UML Class Diagram
-
-![UML Diagram](UML.png)
-
----
-
-## Workflow Chart
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                              Application Start                            │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │
-                                ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                           Login / Registration                            │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │
-                                ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                                 Dashboard                                 │
-└───────────────┬───────────────┬───────────────┬────────────────────────────┘
-                │               │               │
-                ▼               ▼               ▼
-┌───────────────┴───┐   ┌───────┴───────┐   ┌──┴───────────────┐
-│   Vehicle         │   │  Maintenance  │   │  Recommendations │
-│   Management      │   │  History      │   │  & Alerts        │
-└─────────┬─────────┘   └───────┬───────┘   └────────┬─────────┘
-          │                     │                    │
-          ▼                     ▼                    ▼
-┌─────────────────┐   ┌─────────────────┐   ┌──────────────────────────────┐
-│ Add/Edit        │   │ View/Filter     │   │ View Priority Alerts         │
-│ Vehicle Details │   │ Maintenance     │   │ View Automated & Diagnosis   │
-└─────────────────┘   │ Records         │   │ Recommendations              │
-                      └─────────────────┘   └─────────────┬────────────────┘
-                                                        │
-                                                        ▼
-                                         ┌──────────────────────────────┐
-                                         │ Add/Edit/Complete           │
-                                         │ Recommendations             │
-                                         └──────────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────────────────┐
-│                        Maintenance Center Workflow                        │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │
-                                ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│ Add Maintenance Record (with Owner ID) / Add Diagnosis                     │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │
-                                ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│ Diagnosis Form: Add Recommendations, Set Priority, Estimated Cost, etc.    │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │
-                                ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│ Save Diagnosis & Recommendations (Linked to Maintenance Record)            │
-└────────────────────────────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────────────────┐
-│                        Car Owner Workflow                                 │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │
-                                ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│ Add/Edit Vehicle, Add Maintenance Record                                  │
-└───────────────────────────────┬────────────────────────────────────────────┘
-                                │
-                                ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│ View Maintenance History, Recommendations, and Alerts                     │
-└────────────────────────────────────────────────────────────────────────────┘
-
-```
-
-## Setup Instructions
+### Installation Steps
 1. Clone the repository
 2. Open the solution in Visual Studio
 3. Restore NuGet packages
 4. Build the solution
 5. Run the application
 
-## Development Guidelines
-- Use C# coding conventions
-- Follow SOLID principles
-- Document code with XML comments
-- Write meaningful commit messages
-- Test features before committing
+### Configuration
+- Database connection string in `App.config`
+- Theme preferences in `ThemeManager.cs`
+- User roles and permissions in `RoleBasedAccessControl.cs`
+- System settings in `App.config`
 
-## Communication
-- Use GitHub Issues for bug tracking
-- Create pull requests for code review
-- Document major changes in commit messages
-- Keep the team updated on progress
+## Usage Guide
 
-## Important Notes
-- Always pull latest changes before starting work
-- Test your changes before committing
-- Ask for help if stuck
-- Keep code clean and well-documented
+### For Car Owners
+1. Register an account
+2. Add vehicles to your profile
+3. Track maintenance history
+4. Receive maintenance recommendations
+5. Manage service appointments
 
-## Resources
-- [C# Documentation](https://docs.microsoft.com/en-us/dotnet/csharp/)
-- [Windows Forms Guide](https://docs.microsoft.com/en-us/dotnet/desktop/winforms/?view=netdesktop-6.0)
-- [Entity Framework Documentation](https://docs.microsoft.com/en-us/ef/)
+### For Maintenance Centers
+1. Register as a maintenance center
+2. Access customer vehicles
+3. Create maintenance records
+4. Provide recommendations
+5. Track service history
 
-## Contact
-- Ahmed Hesham: [Your Contact Information]
-- Nagham Mahmoud: [Nagham's Contact Information]
+### For Administrators
+1. Manage user accounts
+2. Monitor system activity
+3. Configure system settings
+4. Access all features
 
-## Database Setup & Sample Data
+## Future Enhancements
+- Mobile application support
+- Online appointment scheduling
+- Real-time notifications
+- Integration with vehicle diagnostic systems
+- Advanced reporting and analytics
+- Multi-language support
+- Cloud synchronization
+- API integration
+- Machine learning for maintenance predictions
 
-### 1. Database Creation
-- The database schema is defined in `AutoCarePro/Data/CreateTables.sql`.
-- To set up the database:
-  1. Open SQL Server Management Studio (SSMS).
-  2. Open and execute the `CreateTables.sql` script. This will create all necessary tables, constraints, and triggers.
-  3. The script is idempotent: it will drop and recreate the database if it already exists.
+## Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
-### 2. Sample Data Seeding
-- **Sample data is automatically inserted when you run the application.**
-- The seeding logic is implemented in the `DatabaseSeeder` class (see `AutoCarePro/Data/DatabaseSeeder.cs`).
-- On application startup, the seeder checks if tables are empty and inserts sample users, vehicles, maintenance records, and recommendations for testing.
-- You can customize the sample data in `DatabaseSeeder.cs` as needed.
+## License
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-### 3. Connection String
-- Ensure your application's connection string in `app.config` or `DatabaseService.cs` points to your SQL Server instance and the `AutoCarePro` database.
-- Example connection string:
-  ```xml
-  <connectionStrings>
-    <add name="AutoCareProDb" connectionString="Server=localhost\\SQLEXPRESS;Database=AutoCarePro;Trusted_Connection=True;" providerName="System.Data.SqlClient" />
-  </connectionStrings>
-  ```
-- Update the server name if your SQL Server instance is different.
-
-### 4. Running the Application
-- After setting up the database and connection string, build and run the application.
-- On first run, the application will seed the database with sample data for testing.
+## Support
+For support, please contact the development team or create an issue in the repository.
 

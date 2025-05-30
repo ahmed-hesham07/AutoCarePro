@@ -9,27 +9,39 @@ using AutoCarePro.Services;
 namespace AutoCarePro.Forms
 {
     /// <summary>
-    /// Main dashboard form that displays vehicle information, maintenance recommendations, and alerts
+    /// Main dashboard form that serves as the central hub for the AutoCarePro application.
+    /// This form provides a comprehensive interface for users to:
+    /// 1. View and manage their vehicles
+    /// 2. Receive maintenance recommendations
+    /// 3. Monitor critical alerts
+    /// 4. Access maintenance history
+    /// 5. Add new vehicles and maintenance records
+    /// 
+    /// The dashboard is divided into two main sections:
+    /// - Left panel: Vehicle list and quick actions
+    /// - Right panel: Maintenance recommendations and alerts
     /// </summary>
     public partial class DashboardForm : Form
     {
         // Service instances for database operations and generating maintenance recommendations
-        private readonly DatabaseService _dbService;
-        private readonly RecommendationEngine _recommendationEngine;
-        private User _currentUser;
+        private readonly DatabaseService _dbService;           // Handles all database operations
+        private readonly RecommendationEngine _recommendationEngine;  // Generates maintenance recommendations
+        private User _currentUser;                            // Stores the currently logged-in user
 
         // UI Controls for displaying and interacting with data
-        private ListView _vehicleList;        // Displays list of user's vehicles
-        private ListView _recommendationsList; // Shows maintenance recommendations
-        private ListView _alertsList;         // Displays critical maintenance alerts
-        private Button _addVehicleBtn;        // Button to add new vehicle
-        private Button _addMaintenanceBtn;    // Button to add maintenance record
-        private Button _viewHistoryBtn;       // Button to view maintenance history
+        private ListView _vehicleList = new ListView();
+        private ListView _recommendationsList = new ListView();
+        private ListView _alertsList = new ListView();
+        private Button _addVehicleBtn;        // Button to add new vehicle to the user's profile
+        private Button _addMaintenanceBtn;    // Button to add maintenance record for selected vehicle
+        private Button _viewHistoryBtn;       // Button to view maintenance history for selected vehicle
 
         /// <summary>
-        /// Initializes the dashboard form with user data and services
+        /// Initializes the dashboard form with user data and services.
+        /// This constructor is called when creating a new instance of the dashboard.
+        /// It sets up the database service, recommendation engine, and initializes the UI.
         /// </summary>
-        /// <param name="user">The currently logged-in user</param>
+        /// <param name="user">The currently logged-in user - used to load their vehicles and data</param>
         public DashboardForm(User user)
         {
             InitializeComponent();
@@ -40,24 +52,27 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Sets up the main dashboard layout and initializes all components
+        /// Sets up the main dashboard layout and initializes all components.
+        /// This method creates the two-panel layout and initializes all UI elements.
+        /// The dashboard is designed to provide easy access to all main features.
         /// </summary>
         private void InitializeDashboard()
         {
             // Configure main form properties
             this.Text = $"AutoCarePro Dashboard - Welcome {_currentUser.FullName}";
-            this.Size = new Size(1200, 800);
+            this.Size = new Size(1400, 900);
             this.StartPosition = FormStartPosition.CenterScreen;
 
             // Create main layout panel with two columns
+            // TableLayoutPanel provides a grid-like structure for organizing controls
             var mainPanel = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
                 RowCount = 1,
                 ColumnStyles = {
-                    new ColumnStyle(SizeType.Percent, 50), // Left panel takes 50%
-                    new ColumnStyle(SizeType.Percent, 50)  // Right panel takes 50%
+                    new ColumnStyle(SizeType.Percent, 50), // Left panel takes 50% of width
+                    new ColumnStyle(SizeType.Percent, 50)  // Right panel takes 50% of width
                 }
             };
 
@@ -82,11 +97,14 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Initializes the left panel containing vehicle list and quick action buttons
+        /// Initializes the left panel containing vehicle list and quick action buttons.
+        /// This panel is the main interaction area for vehicle management.
         /// </summary>
+        /// <param name="panel">The panel to initialize with vehicle list and actions</param>
         private void InitializeLeftPanel(Panel panel)
         {
             // Configure vehicle list view
+            // ListView provides a grid-like display of vehicle information
             _vehicleList = new ListView
             {
                 Dock = DockStyle.Top,
@@ -96,7 +114,7 @@ namespace AutoCarePro.Forms
                 GridLines = true
             };
 
-            // Add columns to vehicle list
+            // Add columns to vehicle list for displaying vehicle information
             _vehicleList.Columns.Add("Make", 100);    // Vehicle manufacturer
             _vehicleList.Columns.Add("Model", 100);   // Vehicle model
             _vehicleList.Columns.Add("Year", 50);     // Manufacturing year
@@ -104,6 +122,7 @@ namespace AutoCarePro.Forms
             _vehicleList.SelectedIndexChanged += VehicleList_SelectedIndexChanged;
 
             // Create context menu for vehicle list
+            // This provides right-click options for each vehicle
             var contextMenu = new ContextMenuStrip();
             var editMenuItem = new ToolStripMenuItem("Edit Vehicle");
             var deleteMenuItem = new ToolStripMenuItem("Delete Vehicle");
@@ -114,6 +133,7 @@ namespace AutoCarePro.Forms
             _vehicleList.ContextMenuStrip = contextMenu;
 
             // Create quick actions panel at bottom
+            // FlowLayoutPanel arranges buttons horizontally
             var quickActionsPanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
@@ -141,11 +161,14 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Initializes the right panel containing recommendations and alerts
+        /// Initializes the right panel containing recommendations and alerts.
+        /// This panel provides important maintenance information and warnings.
         /// </summary>
+        /// <param name="panel">The panel to initialize with recommendations and alerts</param>
         private void InitializeRightPanel(Panel panel)
         {
             // Create recommendations panel
+            // GroupBox provides a titled container for the recommendations list
             var recommendationsPanel = new GroupBox
             {
                 Text = "Maintenance Recommendations",
@@ -172,6 +195,7 @@ namespace AutoCarePro.Forms
             recommendationsPanel.Controls.Add(_recommendationsList);
 
             // Create alerts panel
+            // GroupBox provides a titled container for the alerts list
             var alertsPanel = new GroupBox
             {
                 Text = "Critical Alerts",
@@ -201,7 +225,47 @@ namespace AutoCarePro.Forms
         }
 
         /// <summary>
-        /// Loads and displays the user's vehicles in the vehicle list
+        /// Updates the UI state based on current selection and data availability
+        /// </summary>
+        private void UpdateUIState()
+        {
+            bool hasVehicles = _vehicleList.Items.Count > 0;
+            bool hasSelection = _vehicleList.SelectedItems.Count > 0;
+
+            _addMaintenanceBtn.Enabled = hasSelection;
+            _viewHistoryBtn.Enabled = hasSelection;
+            _addVehicleBtn.Enabled = true; // Always enabled
+        }
+
+        /// <summary>
+        /// Handles vehicle selection change in the vehicle list
+        /// </summary>
+        private void VehicleList_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateUIState();
+        }
+
+        /// <summary>
+        /// Handles error logging and displays user-friendly error messages
+        /// </summary>
+        /// <param name="errorMessage">The error message to display to the user</param>
+        /// <param name="ex">The exception that occurred</param>
+        /// <param name="operation">The operation that was being performed when the error occurred</param>
+        private void HandleError(string errorMessage, Exception ex, string operation)
+        {
+            // Log the error (in a real application, this would write to a log file or database)
+            Console.WriteLine($"Error during {operation}: {ex.Message}");
+            Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+
+            // Show user-friendly error message
+            MessageBox.Show(errorMessage, "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        /// <summary>
+        /// Loads and displays the user's vehicles in the vehicle list.
+        /// This method retrieves vehicle data from the database and populates the list view.
+        /// It also enables/disables buttons based on whether the user has any vehicles.
         /// </summary>
         private void LoadVehicleData()
         {
@@ -224,19 +288,18 @@ namespace AutoCarePro.Forms
                     _vehicleList.Items.Add(item);
                 }
 
-                // Enable/disable buttons based on whether user has vehicles
-                _addMaintenanceBtn.Enabled = _vehicleList.Items.Count > 0;
-                _viewHistoryBtn.Enabled = _vehicleList.Items.Count > 0;
+                UpdateUIState();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error loading vehicles: {ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                HandleError("Failed to load vehicle data. Please try again later.", ex, "LoadVehicleData");
             }
         }
 
         /// <summary>
-        /// Loads and displays maintenance recommendations and alerts
+        /// Loads and displays maintenance recommendations and alerts.
+        /// This method retrieves data from the recommendation engine and updates both lists.
+        /// Recommendations are based on vehicle data and maintenance schedules.
         /// </summary>
         private void LoadRecommendations()
         {
@@ -281,20 +344,17 @@ namespace AutoCarePro.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error loading recommendations: {ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                HandleError("Failed to load maintenance recommendations. Please try again later.", ex, "LoadRecommendations");
             }
         }
 
         /// <summary>
-        /// Handles vehicle selection change in the vehicle list
+        /// Refreshes all data on the dashboard
         /// </summary>
-        private void VehicleList_SelectedIndexChanged(object sender, EventArgs e)
+        private void RefreshDashboardData()
         {
-            // Enable/disable buttons based on selection
-            var hasSelection = _vehicleList.SelectedItems.Count > 0;
-            _addMaintenanceBtn.Enabled = hasSelection;
-            _viewHistoryBtn.Enabled = hasSelection;
+            LoadVehicleData();
+            LoadRecommendations();
         }
 
         /// <summary>
@@ -305,8 +365,7 @@ namespace AutoCarePro.Forms
             var addVehicleForm = new AddVehicleForm(_currentUser.Id);
             if (addVehicleForm.ShowDialog() == DialogResult.OK)
             {
-                LoadVehicleData();
-                LoadRecommendations();
+                RefreshDashboardData();
             }
         }
 
@@ -315,15 +374,27 @@ namespace AutoCarePro.Forms
         /// </summary>
         private void AddMaintenanceBtn_Click(object sender, EventArgs e)
         {
-            if (_vehicleList.SelectedItems.Count > 0)
+            try
             {
-                var vehicleId = (int)_vehicleList.SelectedItems[0].Tag;
-                var addMaintenanceForm = new AddMaintenanceForm(vehicleId);
-                if (addMaintenanceForm.ShowDialog() == DialogResult.OK)
+                if (_vehicleList.SelectedItems.Count > 0)
                 {
-                    LoadVehicleData();
-                    LoadRecommendations();
+                    var vehicleId = (int)_vehicleList.SelectedItems[0].Tag;
+                    var addMaintenanceForm = new AddMaintenanceForm(vehicleId, _currentUser);
+                    if (addMaintenanceForm.ShowDialog() == DialogResult.OK)
+                    {
+                        RefreshDashboardData();
+                    }
                 }
+                else
+                {
+                    MessageBox.Show("Please select a vehicle first.", "No Vehicle Selected", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error adding maintenance record: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -352,8 +423,7 @@ namespace AutoCarePro.Forms
                 var editForm = new AddVehicleForm(_currentUser.Id, vehicle);
                 if (editForm.ShowDialog() == DialogResult.OK)
                 {
-                    LoadVehicleData();
-                    LoadRecommendations();
+                    RefreshDashboardData();
                 }
             }
         }
@@ -366,17 +436,24 @@ namespace AutoCarePro.Forms
             if (_vehicleList.SelectedItems.Count > 0)
             {
                 var result = MessageBox.Show(
-                    "Are you sure you want to delete this vehicle?",
+                    "Are you sure you want to delete this vehicle? This action cannot be undone.",
                     "Confirm Delete",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 
                 if (result == DialogResult.Yes)
                 {
-                    var vehicleId = (int)_vehicleList.SelectedItems[0].Tag;
-                    _dbService.DeleteVehicle(vehicleId);
-                    LoadVehicleData();
-                    LoadRecommendations();
+                    try
+                    {
+                        var vehicleId = (int)_vehicleList.SelectedItems[0].Tag;
+                        _dbService.DeleteVehicle(vehicleId);
+                        RefreshDashboardData();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Error deleting vehicle: {ex.Message}", "Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
         }

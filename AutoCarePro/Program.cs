@@ -2,40 +2,53 @@ using System;
 using System.Windows.Forms;
 using AutoCarePro.Services;
 using AutoCarePro.Forms;
+using AutoCarePro.Data;
+using System.Threading.Tasks;
 
 namespace AutoCarePro
 {
     static class Program
     {
         /// <summary>
-        ///  The main entry point for the application.
+        /// The main entry point for the application.
+        /// This is where the program starts executing.
         /// </summary>
-        [STAThread]
-        static void Main()
+        [STAThread] // Indicates this is a Single-Threaded Apartment model application
+        static async Task Main()
         {
+            // Enable visual styles for modern Windows appearance
             Application.EnableVisualStyles();
+            // Set text rendering to be compatible with older Windows versions
             Application.SetCompatibleTextRenderingDefault(false);
 
             try
             {
-                // Initialize database
-                var dbInitializer = new DatabaseInitializer();
-                dbInitializer.Initialize();
+                using (var dbInitializer = new DatabaseInitializer())
+                {
+                    await dbInitializer.InitializeAsync();
+                }
 
-                // Seed database
-                var dbSeeder = new DatabaseSeeder();
-                dbSeeder.Seed(db);
+                using (var dbService = new DatabaseService())
+                {
+                    // Seed the database with initial data
+                    // This populates the database with default/sample data
+                    DatabaseSeeder.Seed(dbService);
 
-                // Start with login form
-                Application.Run(new LoginForm());
+                    // Launch the application starting with the login form
+                    // This is the first form users will see
+                    Application.Run(new LoginForm());
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error starting application: {ex.Message}", "Error",
+                // Show full exception details including inner exceptions
+                string details = ex.ToString();
+                if (ex.InnerException != null)
+                    details += "\n\nInner Exception:\n" + ex.InnerException.ToString();
+
+                MessageBox.Show($"Error starting application: {details}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-
-
         }
     }
 }
