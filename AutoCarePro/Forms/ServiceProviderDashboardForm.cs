@@ -5,12 +5,14 @@ using System.Linq;
 using AutoCarePro.Services;
 using AutoCarePro.Models;
 using AutoCarePro.UI;
+using Microsoft.Extensions.Logging;
 
 namespace AutoCarePro.Forms
 {
     public partial class ServiceProviderDashboardForm : Form
     {
-        private readonly DatabaseService _dbService;
+        private readonly DatabaseService _databaseService;
+        private readonly ILogger<ServiceProviderDashboardForm> _logger;
         private readonly User _currentUser;
 
         // UI Controls
@@ -23,6 +25,7 @@ namespace AutoCarePro.Forms
         private Label _welcomeLabel = new Label();
         private System.Windows.Forms.Timer _fadeInTimer = new System.Windows.Forms.Timer();
         private double _fadeStep = 0.08;
+        private Button _addAppointmentBtn = new Button();
 
         // Search Controls
         private TextBox _searchBox = new TextBox();
@@ -32,14 +35,200 @@ namespace AutoCarePro.Forms
         private Button _clearFiltersBtn = new Button();
         private System.Windows.Forms.Timer _searchDebounceTimer = new System.Windows.Forms.Timer();
 
-        public ServiceProviderDashboardForm(User user)
-        {
-            _currentUser = user;
-            _dbService = new DatabaseService();
+        private ListView _upcomingAppointmentsList = new ListView();
 
+        public ServiceProviderDashboardForm(ILogger<ServiceProviderDashboardForm> logger)
+        {
             InitializeComponent();
+            _logger = logger;
+            _databaseService = ServiceFactory.GetDatabaseService();
+            _currentUser = SessionManager.CurrentUser;
+
+            if (_currentUser == null)
+            {
+                _logger.LogError("No user session found");
+                MessageBox.Show("Session expired. Please login again.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                this.Close();
+                return;
+            }
+
+            SetupForm();
+        }
+
+        private void SetupForm()
+        {
+            // Set form title with provider's name
+            this.Text = $"Service Provider Dashboard - {_currentUser.Username}";
+
+            // Load service requests
+            LoadServiceRequests();
+
+            // Load service history
+            LoadServiceHistory();
+
+            // Setup event handlers
+            AcceptRequestButton.Click += AcceptRequestButton_Click;
+            RejectRequestButton.Click += RejectRequestButton_Click;
+            CompleteServiceButton.Click += CompleteServiceButton_Click;
+            ViewHistoryButton.Click += ViewHistoryButton_Click;
+            LogoutButton.Click += LogoutButton_Click;
+
             InitializeSearchControls();
             InitializeDashboard();
+        }
+
+        private void LoadServiceRequests()
+        {
+            try
+            {
+                var requests = _databaseService.GetPendingServiceRequestsByProvider(_currentUser.Id);
+                ServiceRequestsDataGridView.DataSource = requests;
+                _logger.LogInformation("Loaded {Count} pending service requests for provider {ProviderId}", 
+                    requests.Count, _currentUser.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading service requests");
+                MessageBox.Show("Error loading service requests. Please try again.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void LoadServiceHistory()
+        {
+            try
+            {
+                var history = _databaseService.GetServiceHistoryByProvider(_currentUser.Id);
+                ServiceHistoryDataGridView.DataSource = history;
+                _logger.LogInformation("Loaded service history for provider {ProviderId}", 
+                    _currentUser.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading service history");
+                MessageBox.Show("Error loading service history. Please try again.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void AcceptRequestButton_Click(object sender, EventArgs e)
+        {
+            if (ServiceRequestsDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a service request to accept.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedRequest = (ServiceRequest)ServiceRequestsDataGridView.SelectedRows[0].DataBoundItem;
+            try
+            {
+                if (_databaseService.AcceptServiceRequest(selectedRequest.Id))
+                {
+                    _logger.LogInformation("Service request {RequestId} accepted successfully", 
+                        selectedRequest.Id);
+                    LoadServiceRequests();
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to accept service request {RequestId}", 
+                        selectedRequest.Id);
+                    MessageBox.Show("Failed to accept service request. Please try again.", "Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error accepting service request {RequestId}", 
+                    selectedRequest.Id);
+                MessageBox.Show("An error occurred while accepting the service request.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void RejectRequestButton_Click(object sender, EventArgs e)
+        {
+            if (ServiceRequestsDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a service request to reject.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedRequest = (ServiceRequest)ServiceRequestsDataGridView.SelectedRows[0].DataBoundItem;
+            var reason = Microsoft.VisualBasic.Interaction.InputBox(
+                "Please enter the reason for rejection:", 
+                "Reject Service Request", 
+                "");
+
+            if (string.IsNullOrEmpty(reason))
+            {
+                return;
+            }
+
+            try
+            {
+                if (_databaseService.RejectServiceRequest(selectedRequest.Id, reason))
+                {
+                    _logger.LogInformation("Service request {RequestId} rejected successfully", 
+                        selectedRequest.Id);
+                    LoadServiceRequests();
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to reject service request {RequestId}", 
+                        selectedRequest.Id);
+                    MessageBox.Show("Failed to reject service request. Please try again.", "Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error rejecting service request {RequestId}", 
+                    selectedRequest.Id);
+                MessageBox.Show("An error occurred while rejecting the service request.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void CompleteServiceButton_Click(object sender, EventArgs e)
+        {
+            if (ServiceRequestsDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a service request to complete.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedRequest = (ServiceRequest)ServiceRequestsDataGridView.SelectedRows[0].DataBoundItem;
+            var completeServiceForm = new CompleteServiceForm(_logger, selectedRequest);
+            if (completeServiceForm.ShowDialog() == DialogResult.OK)
+            {
+                LoadServiceRequests();
+                LoadServiceHistory();
+            }
+        }
+
+        private void ViewHistoryButton_Click(object sender, EventArgs e)
+        {
+            if (ServiceHistoryDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a service record to view.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedRecord = (ServiceRecord)ServiceHistoryDataGridView.SelectedRows[0].DataBoundItem;
+            var viewServiceForm = new ViewServiceForm(_logger, selectedRecord);
+            viewServiceForm.ShowDialog();
+        }
+
+        private void LogoutButton_Click(object sender, EventArgs e)
+        {
+            SessionManager.EndSession();
+            _logger.LogInformation("User {Username} logged out", _currentUser.Username);
+            this.Close();
         }
 
         private void InitializeComponent()
@@ -186,7 +375,7 @@ namespace AutoCarePro.Forms
                 var dateFilter = _dateFilterPicker.Checked ? _dateFilterPicker.Value.Date : (DateTime?)null;
 
                 _appointmentsList.Items.Clear();
-                var appointments = _dbService.GetAppointmentsByServiceProvider(_currentUser.Id);
+                var appointments = _databaseService.GetAppointmentsByServiceProvider(_currentUser.Id);
 
                 var filteredAppointments = appointments.Where(a => {
                     // Apply search text filter
@@ -279,6 +468,7 @@ namespace AutoCarePro.Forms
             LoadAppointments();
             LoadServices();
             LoadReviews();
+            LoadUpcomingAppointments();
         }
 
         private void InitializeLeftPanel(Panel panel)
@@ -293,6 +483,49 @@ namespace AutoCarePro.Forms
             };
             UIStyles.ApplyLabelStyle(_welcomeLabel, true);
             panel.Controls.Add(_welcomeLabel);
+
+            // Button panel for actions
+            var buttonPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                Height = 50,
+                FlowDirection = FlowDirection.LeftToRight,
+                Padding = new Padding(10)
+            };
+
+            // Initialize and style buttons
+            _viewHistoryBtn = new Button
+            {
+                Text = "View History",
+                Width = 120,
+                Height = 35,
+                Enabled = false
+            };
+            UIStyles.ApplyButtonStyle(_viewHistoryBtn);
+            _viewHistoryBtn.Click += ViewHistoryBtn_Click;
+
+            _profileBtn = new Button
+            {
+                Text = "My Profile",
+                Width = 120,
+                Height = 35
+            };
+            UIStyles.ApplyButtonStyle(_profileBtn);
+            _profileBtn.Click += ProfileBtn_Click;
+
+            buttonPanel.Controls.AddRange(new Control[] { _viewHistoryBtn, _profileBtn });
+            panel.Controls.Add(buttonPanel);
+
+            // Add Appointment button
+            _addAppointmentBtn = new Button
+            {
+                Text = "Add Appointment",
+                Width = 150,
+                Height = 35
+            };
+            UIStyles.ApplyButtonStyle(_addAppointmentBtn, true);
+            _addAppointmentBtn.Click += AddAppointmentBtn_Click;
+            panel.Controls.Add(_addAppointmentBtn);
 
             // Appointments list section
             var appointmentsGroup = new GroupBox
@@ -313,9 +546,43 @@ namespace AutoCarePro.Forms
             _appointmentsList.Columns.Add("Status", 100);
             _appointmentsList.FullRowSelect = true;
             _appointmentsList.MultiSelect = false;
+            _appointmentsList.SelectedIndexChanged += AppointmentsList_SelectedIndexChanged;
 
             appointmentsGroup.Controls.Add(_appointmentsList);
             panel.Controls.Add(appointmentsGroup);
+        }
+
+        private void AppointmentsList_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            _viewHistoryBtn.Enabled = _appointmentsList.SelectedItems.Count > 0;
+        }
+
+        private void ViewHistoryBtn_Click(object sender, EventArgs e)
+        {
+            if (_appointmentsList.SelectedItems.Count > 0)
+            {
+                var appointmentId = (int)_appointmentsList.SelectedItems[0].Tag;
+                var appointment = _databaseService.GetAppointmentById(appointmentId);
+                if (appointment != null)
+                {
+                    var historyForm = new MaintenanceHistoryForm(appointment.VehicleId, _currentUser);
+                    historyForm.ShowDialog();
+                }
+            }
+        }
+
+        private void ProfileBtn_Click(object sender, EventArgs e)
+        {
+            // Implementation of ProfileBtn_Click method
+        }
+
+        private void AddAppointmentBtn_Click(object sender, EventArgs e)
+        {
+            var addAppointmentForm = new AddAppointmentForm(_currentUser.Id, _currentUser);
+            if (addAppointmentForm.ShowDialog() == DialogResult.OK)
+            {
+                LoadAppointments();
+            }
         }
 
         private void InitializeRightPanel(Panel panel)
@@ -325,7 +592,7 @@ namespace AutoCarePro.Forms
             {
                 Text = "Available Services",
                 Dock = DockStyle.Top,
-                Height = 300,
+                Height = 200,
                 Padding = new Padding(10)
             };
             UIStyles.ApplyGroupBoxStyle(servicesPanel);
@@ -344,7 +611,8 @@ namespace AutoCarePro.Forms
             var reviewsPanel = new GroupBox
             {
                 Text = "Recent Reviews",
-                Dock = DockStyle.Fill,
+                Dock = DockStyle.Top,
+                Height = 200,
                 Padding = new Padding(10)
             };
             UIStyles.ApplyGroupBoxStyle(reviewsPanel);
@@ -353,12 +621,97 @@ namespace AutoCarePro.Forms
             UIStyles.ApplyListViewStyle(_reviewsList);
             _reviewsList.Dock = DockStyle.Fill;
             _reviewsList.Columns.Add("Customer", 150);
-            _reviewsList.Columns.Add("Rating", 100);
-            _reviewsList.Columns.Add("Comment", 300);
-            _reviewsList.Columns.Add("Date", 100);
+            _reviewsList.Columns.Add("Rating", 80);
+            _reviewsList.Columns.Add("Comment", 250);
+            _reviewsList.Columns.Add("Date", 120);
 
             reviewsPanel.Controls.Add(_reviewsList);
             panel.Controls.Add(reviewsPanel);
+
+            // Upcoming Appointments panel
+            var upcomingPanel = new GroupBox
+            {
+                Text = "Upcoming Appointments",
+                Dock = DockStyle.Fill,
+                Padding = new Padding(10)
+            };
+            UIStyles.ApplyGroupBoxStyle(upcomingPanel);
+
+            var upcomingLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                RowCount = 2,
+                ColumnCount = 1,
+                RowStyles = {
+                    new RowStyle(SizeType.Absolute, 40),
+                    new RowStyle(SizeType.Percent, 100)
+                }
+            };
+
+            var addUpcomingBtn = new Button
+            {
+                Text = "Add",
+                Width = 100,
+                Height = 30,
+                Anchor = AnchorStyles.Right
+            };
+            UIStyles.ApplyButtonStyle(addUpcomingBtn, true);
+            addUpcomingBtn.Click += AddUpcomingAppointmentBtn_Click;
+            upcomingLayout.Controls.Add(addUpcomingBtn, 0, 0);
+
+            _upcomingAppointmentsList = new ListView
+            {
+                Dock = DockStyle.Fill,
+                View = View.Details,
+                FullRowSelect = true
+            };
+            UIStyles.ApplyListViewStyle(_upcomingAppointmentsList);
+            _upcomingAppointmentsList.Columns.Add("Date", 100);
+            _upcomingAppointmentsList.Columns.Add("Time", 100);
+            _upcomingAppointmentsList.Columns.Add("Service Type", 150);
+            _upcomingAppointmentsList.Columns.Add("Status", 100);
+            _upcomingAppointmentsList.Columns.Add("Notes", 200);
+            upcomingLayout.Controls.Add(_upcomingAppointmentsList, 0, 1);
+
+            upcomingPanel.Controls.Add(upcomingLayout);
+            panel.Controls.Add(upcomingPanel);
+        }
+
+        private void AddUpcomingAppointmentBtn_Click(object sender, EventArgs e)
+        {
+            var addAppointmentForm = new AddAppointmentForm(_currentUser.Id, _currentUser);
+            if (addAppointmentForm.ShowDialog() == DialogResult.OK)
+            {
+                LoadUpcomingAppointments();
+            }
+        }
+
+        private void LoadUpcomingAppointments()
+        {
+            try
+            {
+                _upcomingAppointmentsList.Items.Clear();
+                var now = DateTime.Now;
+                var appointments = _databaseService.GetAppointmentsByServiceProvider(_currentUser.Id)
+                    .Where(a => a.AppointmentDate >= now && a.Status != "Cancelled")
+                    .OrderBy(a => a.AppointmentDate)
+                    .ToList();
+                foreach (var appointment in appointments)
+                {
+                    var item = new ListViewItem(appointment.AppointmentDate.ToShortDateString());
+                    item.SubItems.Add(appointment.AppointmentDate.ToShortTimeString());
+                    item.SubItems.Add(appointment.ServiceType);
+                    item.SubItems.Add(appointment.Status);
+                    item.SubItems.Add(appointment.Notes);
+                    item.Tag = appointment.Id;
+                    _upcomingAppointmentsList.Items.Add(item);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading upcoming appointments: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void LoadAppointments()
@@ -379,7 +732,7 @@ namespace AutoCarePro.Forms
             try
             {
                 _servicesList.Items.Clear();
-                var services = _dbService.GetServicesByProvider(_currentUser.Id);
+                var services = _databaseService.GetServicesByProvider(_currentUser.Id);
 
                 foreach (var service in services)
                 {
@@ -402,7 +755,7 @@ namespace AutoCarePro.Forms
             try
             {
                 _reviewsList.Items.Clear();
-                var reviews = _dbService.GetReviewsByServiceProvider(_currentUser.Id);
+                var reviews = _databaseService.GetReviewsByServiceProvider(_currentUser.Id);
 
                 foreach (var review in reviews)
                 {

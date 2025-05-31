@@ -406,7 +406,7 @@ namespace AutoCarePro.Forms
             if (_vehicleList.SelectedItems.Count > 0)
             {
                 var vehicleId = (int)_vehicleList.SelectedItems[0].Tag;
-                var historyForm = new MaintenanceHistoryForm(vehicleId);
+                var historyForm = new MaintenanceHistoryForm(vehicleId, _currentUser);
                 historyForm.ShowDialog();
             }
         }

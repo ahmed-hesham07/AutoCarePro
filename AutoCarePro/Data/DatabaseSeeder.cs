@@ -1,104 +1,62 @@
-using AutoCarePro.Models;
-using AutoCarePro.Services;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
+using AutoCarePro.Models;
+using AutoCarePro.Services;
 
 namespace AutoCarePro.Data
 {
     public static class DatabaseSeeder
     {
-        public static void Seed(DatabaseService db)
+        public static async Task Seed(DatabaseService db)
         {
-            // Seed Users
-            if (!db.GetUsers().Any())
+            // Seed users
+            var user = new User
             {
-                db.AddUser(new User
-                {
-                    Username = "carowner",
-                    Password = "hashedpassword", // Use a real hash in production!
-                    FullName = "Car Owner",
-                    Email = "carowner@example.com",
-                    PhoneNumber = "1234567890",
-                    Type = UserType.CarOwner
-                });
+                Username = "testuser",
+                Email = "test@example.com",
+                Password = "password123",
+                UserType = UserType.CarOwner
+            };
+            await db.AddUserAsync(user);
 
-                db.AddUser(new User
-                {
-                    Username = "maintenancecenter",
-                    Password = "hashedpassword", // Use a real hash in production!
-                    FullName = "Maintenance Center",
-                    Email = "maintenancecenter@example.com",
-                    PhoneNumber = "0987654321",
-                    Type = UserType.MaintenanceCenter
-                });
-            }
-
-            // Seed Vehicles
-            var user = db.GetUsers().FirstOrDefault();
-            if (user != null && !db.GetVehiclesByUserId(user.Id).Any())
+            // Seed vehicles
+            var vehicle = new Vehicle
             {
-                var car = new Car
-                {
-                    UserId = user.Id,
-                    Make = "Toyota",
-                    Model = "Corolla",
-                    Year = 2018,
-                    LicensePlate = "ABC123",
-                    VIN = "1HGCM82633A004352",
-                    CurrentMileage = 50000,
-                    FuelType = "Gasoline",
-                    Notes = "Sample vehicle",
-                    Type = VehicleType.Car,
-                    TransmissionType = "Automatic",
-                    Color = "White",
-                    NumberOfDoors = 4,
-                    BodyStyle = "Sedan",
-                    EngineType = "4-Cylinder",
-                    User = user
-                };
+                Make = "Toyota",
+                Model = "Camry",
+                Year = 2020,
+                VIN = "1HGCM82633A123456",
+                Mileage = 50000,
+                UserId = user.Id
+            };
+            await db.AddVehicleAsync(vehicle);
 
-                db.AddVehicle(car);
-            }
-
-            // Seed Maintenance Records
-            var vehicle = db.GetVehiclesByUserId(user.Id).FirstOrDefault();
-            if (vehicle != null && !db.GetMaintenanceRecords(vehicle.Id).Any())
+            // Seed maintenance records
+            var maintenanceRecord = new MaintenanceRecord
             {
-                var maintenanceRecord = new MaintenanceRecord
-                {
-                    VehicleId = vehicle.Id,
-                    MaintenanceDate = DateTime.Now,
-                    MaintenanceType = "Oil Change",
-                    Description = "Regular oil change",
-                    MileageAtMaintenance = 50000,
-                    Cost = 50.00m,
-                    ServiceProvider = "Local Garage",
-                    Notes = "Regular maintenance",
-                    HasDiagnosisRecommendations = false,
-                    Vehicle = vehicle
-                };
+                VehicleId = vehicle.Id,
+                ServiceProviderId = user.Id,
+                ServiceDate = DateTime.Now,
+                MaintenanceType = "Oil Change",
+                Description = "Regular oil change service",
+                Mileage = 50000,
+                Cost = 50.00m,
+                Notes = "All good"
+            };
+            await db.AddMaintenanceRecordAsync(maintenanceRecord);
 
-                db.AddMaintenanceRecord(maintenanceRecord);
-            }
-
-            // Seed Maintenance Recommendations
-            if (vehicle != null && !db.GetMaintenanceRecommendations(vehicle.Id).Any())
+            // Seed maintenance recommendations
+            var recommendation = new MaintenanceRecommendation
             {
-                var recommendation = new MaintenanceRecommendation
-                {
-                    VehicleId = vehicle.Id,
-                    Component = "Brakes",
-                    Description = "Brake pads need replacement",
-                    Priority = PriorityLevel.High,
-                    RecommendedDate = DateTime.Now.AddDays(30),
-                    EstimatedCost = 200.00m,
-                    Notes = "Regular maintenance",
-                    IsCompleted = false,
-                    Vehicle = vehicle
-                };
-
-                db.AddMaintenanceRecommendation(recommendation);
-            }
+                VehicleId = vehicle.Id,
+                ServiceProviderId = user.Id,
+                RecommendationDate = DateTime.Now,
+                Description = "Schedule next oil change in 5000 miles",
+                Priority = PriorityLevel.Medium,
+                Status = RecommendationStatus.Pending
+            };
+            await db.AddMaintenanceRecommendationAsync(recommendation);
         }
     }
 }

@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using AutoCarePro.Models;
+using Microsoft.Extensions.Logging;
 
 namespace AutoCarePro.Services
 {
@@ -11,8 +12,53 @@ namespace AutoCarePro.Services
     /// SessionManager class handles user session management in the AutoCarePro application.
     /// It provides functionality to save, load, and delete user sessions with encryption.
     /// </summary>
-    public class SessionManager
+    public static class SessionManager
     {
+        private static User? _currentUser;
+        private static ILogger? _logger;
+
+        public static User? CurrentUser => _currentUser;
+
+        public static void Initialize(ILogger logger)
+        {
+            _logger = logger;
+        }
+
+        public static void StartSession(User user)
+        {
+            _currentUser = user;
+            _logger?.LogInformation("Session started for user {Username}", user.Username);
+        }
+
+        public static void EndSession()
+        {
+            if (_currentUser != null)
+            {
+                _logger?.LogInformation("Session ended for user {Username}", _currentUser.Username);
+                _currentUser = null;
+            }
+        }
+
+        public static bool IsAuthenticated()
+        {
+            return _currentUser != null;
+        }
+
+        public static bool IsCarOwner()
+        {
+            return _currentUser?.UserType == UserType.CarOwner;
+        }
+
+        public static bool IsMaintenanceCenter()
+        {
+            return _currentUser?.UserType == UserType.MaintenanceCenter;
+        }
+
+        public static bool IsServiceProvider()
+        {
+            return _currentUser?.UserType == UserType.ServiceProvider;
+        }
+
         // File path where the session data will be stored
         private static readonly string SessionFile = "session.json";
         // Encryption key for securing session data (Note: In production, use a secure key management system)
@@ -96,6 +142,15 @@ namespace AutoCarePro.Services
         {
             if (File.Exists(SessionFile))
                 File.Delete(SessionFile);
+        }
+
+        /// <summary>
+        /// Clears the current session
+        /// </summary>
+        public static void ClearSession()
+        {
+            DeleteSession();
+            _currentUser = null;
         }
 
         /// <summary>

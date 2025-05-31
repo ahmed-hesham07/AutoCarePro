@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace AutoCarePro.Models
 {
@@ -17,18 +19,33 @@ namespace AutoCarePro.Models
         public string Description { get; set; }
 
         [Required]
+        [Column(TypeName = "decimal(18,2)")]
         public decimal Price { get; set; }
 
         [Required]
         public int ServiceProviderId { get; set; }
 
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        [Required]
+        [StringLength(50)]
+        public string Category { get; set; }
+
+        [Required]
+        public int DurationMinutes { get; set; }
+
+        public bool IsAvailable { get; set; } = true;
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime? UpdatedAt { get; set; }
 
-        public int DurationMinutes { get; set; }
-
         // Navigation properties
-        public virtual User ServiceProvider { get; set; }
+        [ForeignKey("ServiceProviderId")]
+        public User ServiceProvider { get; set; }
+
+        public ICollection<Appointment> Bookings { get; set; } = new List<Appointment>();
+
+        // Computed property for duration
+        [NotMapped]
+        public TimeSpan Duration => TimeSpan.FromMinutes(DurationMinutes);
     }
 } 

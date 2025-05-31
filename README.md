@@ -308,3 +308,13 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Support
 For support, please contact the development team or create an issue in the repository.
 
+## Recent Changes
+
+### 2024-06
+- Fixed Entity Framework Core/SQLite compatibility issues:
+  - Removed transaction logic from database migrations (required for SQLite).
+  - Added missing properties to models (e.g., Appointment, Service) to resolve build errors.
+  - Updated database initialization to avoid unsupported transaction usage.
+- Improved build reliability and error reporting.
+- All changes are committed and version controlled.
+

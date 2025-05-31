@@ -7,6 +7,13 @@ using AutoCarePro.Models;
 using AutoCarePro.Services;
 using System.Threading.Tasks;
 using AutoCarePro.UI;
+using System.IO;
+using System.Data;
+using ClosedXML.Excel;
+using iTextSharp.text;
+using iTextSharp.text.pdf;
+using System.Threading;
+using Font = System.Drawing.Font;  // Explicitly use System.Drawing.Font
 
 namespace AutoCarePro.Forms
 {
@@ -29,6 +36,7 @@ namespace AutoCarePro.Forms
         // Service instance for database operations
         private readonly DatabaseService _dbService;  // Handles all database operations
         private readonly int _vehicleId;             // ID of the vehicle being viewed
+        private readonly User _currentUser;          // Current user viewing the form
         private Vehicle? _vehicle = null;
 
         // UI Controls for displaying and filtering maintenance history
@@ -41,13 +49,14 @@ namespace AutoCarePro.Forms
         private Button _printBtn = new Button();
         private Label _totalCostLabel = new Label();
         private Label _lastServiceLabel = new Label();
-        private Button _darkModeToggleBtn = new Button();
-        private Button _accentColorBtn = new Button();
         private System.Windows.Forms.Timer _fadeInTimer = new System.Windows.Forms.Timer();
         private double _fadeStep = 0.08;
 
         // Pagination state for printing
         private int _printRecordIndex = 0;
+
+        private CancellationTokenSource _loadingCancellation;
+        private ProgressDialog _progressDialog;
 
         /// <summary>
         /// Initializes the maintenance history form for a specific vehicle.
@@ -55,14 +64,16 @@ namespace AutoCarePro.Forms
         /// It sets up the database service, loads vehicle data, and initializes the UI.
         /// </summary>
         /// <param name="vehicleId">ID of the vehicle to show maintenance history for</param>
-        public MaintenanceHistoryForm(int vehicleId)
+        /// <param name="currentUser">The current user viewing the form</param>
+        public MaintenanceHistoryForm(int vehicleId, User currentUser)
         {
             InitializeComponent();
             _vehicleId = vehicleId;
+            _currentUser = currentUser;
             _dbService = new DatabaseService();
             LoadVehicleData();
             InitializeForm();
-            LoadMaintenanceHistory();
+            _ = LoadMaintenanceHistoryAsync();  // Call the async method
         }
 
         /// <summary>
@@ -95,49 +106,6 @@ namespace AutoCarePro.Forms
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
-
-            // Add dark mode toggle and accent color picker (top-right)
-            _darkModeToggleBtn = new Button
-            {
-                Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙",
-                Width = 40,
-                Height = 40,
-                Top = 10,
-                Left = this.ClientSize.Width - 100,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            UIStyles.ApplyButtonStyle(_darkModeToggleBtn, true);
-            _darkModeToggleBtn.Click += (s, e) => {
-                ThemeManager.Instance.IsDarkMode = !ThemeManager.Instance.IsDarkMode;
-                _darkModeToggleBtn.Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙";
-                ThemeManager.Instance.ApplyTheme(this);
-                UIStyles.RefreshStyles(this);
-            };
-
-            _accentColorBtn = new Button
-            {
-                Text = "🎨",
-                Width = 40,
-                Height = 40,
-                Top = 10,
-                Left = this.ClientSize.Width - 50,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            UIStyles.ApplyButtonStyle(_accentColorBtn, true);
-            _accentColorBtn.Click += (s, e) => {
-                using (var colorDialog = new ColorDialog())
-                {
-                    colorDialog.Color = ThemeManager.Instance.AccentColor;
-                    if (colorDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        ThemeManager.Instance.SetAccentColor(colorDialog.Color);
-                        UIStyles.RefreshStyles(this);
-                    }
-                }
-            };
-
-            this.Controls.Add(_darkModeToggleBtn);
-            this.Controls.Add(_accentColorBtn);
 
             // Fade-in animation
             this.Opacity = 0;
@@ -200,42 +168,47 @@ namespace AutoCarePro.Forms
                 BackColor = UIStyles.Colors.Secondary
             };
 
-            // Maintenance type filter dropdown
-            var lblType = new Label { Text = "Type:", AutoSize = true };
-            UIStyles.ApplyLabelStyle(lblType);
-            layout.Controls.Add(lblType);
+            // Add type filter
             _filterTypeComboBox = new ComboBox
             {
-                Width = 120,
-                DropDownStyle = ComboBoxStyle.DropDownList  // Prevents user from typing in the combo box
+                Width = 150,
+                DropDownStyle = ComboBoxStyle.DropDownList
             };
-            UIStyles.ApplyComboBoxStyle(_filterTypeComboBox);
-            _filterTypeComboBox.Items.AddRange(new string[] { "All", "Oil Change", "Tire Rotation", "Brake Service", "Other" });
-            _filterTypeComboBox.SelectedIndex = 0;  // Select "All" by default
+            _filterTypeComboBox.Items.AddRange(new string[] { "All", "Regular Maintenance", "Oil Change", "Tire Rotation", "Brake Service", "Engine Repair", "Transmission Service", "Electrical System", "Air Conditioning", "Other" });
+            _filterTypeComboBox.SelectedIndex = 0;
+            _filterTypeComboBox.SelectedIndexChanged += (s, e) => _ = LoadMaintenanceHistoryAsync();
             layout.Controls.Add(_filterTypeComboBox);
 
-            // Date range filters with date pickers
-            var lblFrom = new Label { Text = "From:", AutoSize = true };
-            UIStyles.ApplyLabelStyle(lblFrom);
-            layout.Controls.Add(lblFrom);
-            _startDatePicker = new DateTimePicker { Width = 120 };
+            // Add date range filters
+            _startDatePicker = new DateTimePicker
+            {
+                Width = 150,
+                Format = DateTimePickerFormat.Short
+            };
+            _startDatePicker.ValueChanged += (s, e) => _ = LoadMaintenanceHistoryAsync();
             layout.Controls.Add(_startDatePicker);
 
-            var lblTo = new Label { Text = "To:", AutoSize = true };
-            UIStyles.ApplyLabelStyle(lblTo);
-            layout.Controls.Add(lblTo);
-            _endDatePicker = new DateTimePicker { Width = 120 };
+            _endDatePicker = new DateTimePicker
+            {
+                Width = 150,
+                Format = DateTimePickerFormat.Short
+            };
+            _endDatePicker.ValueChanged += (s, e) => _ = LoadMaintenanceHistoryAsync();
             layout.Controls.Add(_endDatePicker);
 
-            // Apply filter button
-            _applyFilterBtn = new Button
+            // Add upcoming visits button
+            var upcomingVisitsBtn = new Button
             {
-                Text = "Apply Filter",
-                Width = 100
+                Text = "View Upcoming Visits",
+                Width = 150
             };
-            UIStyles.ApplyButtonStyle(_applyFilterBtn, true);
-            _applyFilterBtn.Click += ApplyFilterBtn_Click;
-            layout.Controls.Add(_applyFilterBtn);
+            UIStyles.ApplyButtonStyle(upcomingVisitsBtn);
+            upcomingVisitsBtn.Click += (s, e) =>
+            {
+                var upcomingVisitsForm = new UpcomingVisitsForm(_vehicleId, _currentUser);
+                upcomingVisitsForm.ShowDialog();
+            };
+            layout.Controls.Add(upcomingVisitsBtn);
 
             panel.Controls.Add(layout);
         }
@@ -329,49 +302,77 @@ namespace AutoCarePro.Forms
         /// This method retrieves records from the database, applies any active filters,
         /// and updates both the list view and statistics.
         /// </summary>
-        private void LoadMaintenanceHistory()
+        private async Task LoadMaintenanceHistoryAsync()
         {
             try
             {
-                // Get all maintenance records for the vehicle
-                var records = _dbService.GetMaintenanceRecords(_vehicleId).ToList();
+                // Cancel any existing loading operation
+                _loadingCancellation?.Cancel();
+                _loadingCancellation = new CancellationTokenSource();
 
-                // Apply type filter if selected
-                if (_filterTypeComboBox.SelectedItem != null && _filterTypeComboBox.SelectedItem.ToString() != "All")
+                // Show progress dialog
+                using (_progressDialog = new ProgressDialog("Loading Maintenance History", "Please wait..."))
                 {
-                    records = records.Where(r => r.MaintenanceType == _filterTypeComboBox.SelectedItem.ToString()).ToList();
+                    _progressDialog.Show();
+
+                    // Get all maintenance records for the vehicle
+                    var records = await Task.Run(() => _dbService.GetMaintenanceRecords(_vehicleId).ToList(), 
+                        _loadingCancellation.Token);
+
+                    // Apply type filter if selected
+                    if (_filterTypeComboBox.SelectedItem != null && _filterTypeComboBox.SelectedItem.ToString() != "All")
+                    {
+                        records = records.Where(r => r.MaintenanceType == _filterTypeComboBox.SelectedItem.ToString()).ToList();
+                    }
+
+                    // Apply date range filter
+                    records = records.Where(r => r.MaintenanceDate >= _startDatePicker.Value && 
+                                              r.MaintenanceDate <= _endDatePicker.Value).ToList();
+
+                    // Sort records by date (most recent first)
+                    records = records.OrderByDescending(r => r.MaintenanceDate).ToList();
+
+                    // Clear existing items
+                    _maintenanceList.Items.Clear();
+
+                    // Add records to list view in chunks
+                    const int chunkSize = 100;
+                    for (int i = 0; i < records.Count; i += chunkSize)
+                    {
+                        var chunk = records.Skip(i).Take(chunkSize);
+                        foreach (var record in chunk)
+                        {
+                            var item = new ListViewItem(record.MaintenanceDate.ToShortDateString());
+                            item.SubItems.Add(record.MaintenanceType);
+                            item.SubItems.Add(record.Description);
+                            item.SubItems.Add(record.MileageAtMaintenance.ToString());
+                            item.SubItems.Add(record.Cost.ToString("C"));
+                            item.SubItems.Add(record.ServiceProvider);
+                            item.SubItems.Add(record.Notes);
+                            _maintenanceList.Items.Add(item);
+                        }
+
+                        // Update progress
+                        _progressDialog.UpdateProgress((i + chunkSize) * 100 / records.Count);
+                    }
+
+                    // Update statistics
+                    UpdateStatistics(records);
                 }
-
-                // Apply date range filter
-                records = records.Where(r => r.MaintenanceDate >= _startDatePicker.Value && 
-                                          r.MaintenanceDate <= _endDatePicker.Value).ToList();
-
-                // Sort records by date (most recent first)
-                records = records.OrderByDescending(r => r.MaintenanceDate).ToList();
-
-                // Clear existing items
-                _maintenanceList.Items.Clear();
-
-                // Add records to list view
-                foreach (var record in records)
-                {
-                    var item = new ListViewItem(record.MaintenanceDate.ToShortDateString());
-                    item.SubItems.Add(record.MaintenanceType);
-                    item.SubItems.Add(record.Description);
-                    item.SubItems.Add(record.MileageAtMaintenance.ToString());
-                    item.SubItems.Add(record.Cost.ToString("C"));
-                    item.SubItems.Add(record.ServiceProvider);
-                    item.SubItems.Add(record.Notes);
-                    _maintenanceList.Items.Add(item);
-                }
-
-                // Update statistics
-                UpdateStatistics(records);
+            }
+            catch (OperationCanceledException)
+            {
+                // Loading was cancelled, do nothing
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error loading maintenance history: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _progressDialog?.Close();
+                _progressDialog = null;
             }
         }
 
@@ -394,13 +395,13 @@ namespace AutoCarePro.Forms
         /// <summary>
         /// Handles click event for Apply Filter button
         /// </summary>
-        private void ApplyFilterBtn_Click(object sender, EventArgs e)
+        private async void ApplyFilterBtn_Click(object sender, EventArgs e)
         {
-            LoadMaintenanceHistory();
+            await LoadMaintenanceHistoryAsync();
         }
 
         /// <summary>
-        /// Handles click event for Export to CSV button
+        /// Handles click event for Export button
         /// </summary>
         private async void ExportBtn_Click(object sender, EventArgs e)
         {
@@ -408,9 +409,9 @@ namespace AutoCarePro.Forms
             {
                 var saveDialog = new SaveFileDialog
                 {
-                    Filter = "CSV Files (*.csv)|*.csv",
+                    Filter = "Excel Files (*.xlsx)|*.xlsx|PDF Files (*.pdf)|*.pdf|CSV Files (*.csv)|*.csv",
                     Title = "Export Maintenance History",
-                    FileName = $"Maintenance_History_{_vehicle.Make}_{_vehicle.Model}_{DateTime.Now:yyyyMMdd}.csv"
+                    FileName = $"Maintenance_History_{_vehicle.Make}_{_vehicle.Model}_{DateTime.Now:yyyyMMdd}"
                 };
 
                 if (saveDialog.ShowDialog() == DialogResult.OK)
@@ -418,34 +419,27 @@ namespace AutoCarePro.Forms
                     // Disable the export button and show progress
                     _exportBtn.Enabled = false;
                     _exportBtn.Text = "Exporting...";
-                    Application.DoEvents();
 
-                    await Task.Run(() =>
+                    using (_progressDialog = new ProgressDialog("Exporting Maintenance History", "Please wait..."))
                     {
-                        using (var writer = new System.IO.StreamWriter(saveDialog.FileName))
-                        {
-                            // Write header
-                            writer.WriteLine("Date,Type,Description,Mileage,Cost,Provider,Notes");
-                            
-                            // Write data in chunks to prevent memory issues
-                            const int chunkSize = 100;
-                            for (int i = 0; i < _maintenanceList.Items.Count; i += chunkSize)
-                            {
-                                var chunk = _maintenanceList.Items.Cast<ListViewItem>()
-                                    .Skip(i)
-                                    .Take(chunkSize);
-                                
-                                foreach (var item in chunk)
-                                {
-                                    writer.WriteLine(string.Join(",", item.SubItems.Cast<ListViewItem.ListViewSubItem>()
-                                        .Select(subItem => $"\"{subItem.Text.Replace("\"", "\"\"")}\"")));
-                                }
-                            }
-                        }
-                    });
+                        _progressDialog.Show();
 
-                    MessageBox.Show("Maintenance history exported successfully!", "Success",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        switch (Path.GetExtension(saveDialog.FileName).ToLower())
+                        {
+                            case ".xlsx":
+                                await ExportToExcelAsync(saveDialog.FileName);
+                                break;
+                            case ".pdf":
+                                await ExportToPdfAsync(saveDialog.FileName);
+                                break;
+                            case ".csv":
+                                await ExportToCsvAsync(saveDialog.FileName);
+                                break;
+                        }
+
+                        MessageBox.Show("Maintenance history exported successfully!", "Success",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
                 }
             }
             catch (Exception ex)
@@ -455,16 +449,174 @@ namespace AutoCarePro.Forms
             }
             finally
             {
-                // Re-enable the export button and restore its text
                 _exportBtn.Enabled = true;
-                _exportBtn.Text = "Export to CSV";
+                _exportBtn.Text = "Export";
+                _progressDialog?.Close();
+                _progressDialog = null;
             }
+        }
+
+        private async Task ExportToExcelAsync(string filePath)
+        {
+            await Task.Run(() =>
+            {
+                using (var workbook = new XLWorkbook())
+                {
+                    var worksheet = workbook.Worksheets.Add("Maintenance History");
+
+                    // Add title
+                    worksheet.Cell(1, 1).Value = $"Maintenance History - {_vehicle.Make} {_vehicle.Model}";
+                    worksheet.Cell(1, 1).Style.Font.Bold = true;
+                    worksheet.Cell(1, 1).Style.Font.FontSize = 14;
+
+                    // Add statistics
+                    worksheet.Cell(2, 1).Value = _totalCostLabel.Text;
+                    worksheet.Cell(3, 1).Value = _lastServiceLabel.Text;
+
+                    // Add headers
+                    for (int i = 0; i < _maintenanceList.Columns.Count; i++)
+                    {
+                        worksheet.Cell(5, i + 1).Value = _maintenanceList.Columns[i].Text;
+                        worksheet.Cell(5, i + 1).Style.Font.Bold = true;
+                    }
+
+                    // Add data in chunks with progress updates
+                    const int chunkSize = 100;
+                    int totalItems = _maintenanceList.Items.Count;
+                    
+                    for (int i = 0; i < totalItems; i += chunkSize)
+                    {
+                        var chunk = _maintenanceList.Items.Cast<ListViewItem>()
+                            .Skip(i)
+                            .Take(chunkSize);
+
+                        foreach (var item in chunk)
+                        {
+                            for (int j = 0; j < item.SubItems.Count; j++)
+                            {
+                                worksheet.Cell(i + 6, j + 1).Value = item.SubItems[j].Text;
+                            }
+                        }
+
+                        // Update progress
+                        int progress = (i + chunkSize) * 100 / totalItems;
+                        _progressDialog?.UpdateProgress(Math.Min(progress, 100));
+                        _progressDialog?.UpdateStatus($"Exporting data... {progress}%");
+                    }
+
+                    // Auto-fit columns
+                    worksheet.Columns().AdjustToContents();
+
+                    // Save the workbook
+                    _progressDialog?.UpdateStatus("Saving file...");
+                    workbook.SaveAs(filePath);
+                }
+            });
+        }
+
+        private async Task ExportToPdfAsync(string filePath)
+        {
+            await Task.Run(() =>
+            {
+                using (var document = new Document(PageSize.A4.Rotate()))
+                {
+                    PdfWriter.GetInstance(document, new FileStream(filePath, FileMode.Create));
+                    document.Open();
+
+                    // Add title
+                    var titleFont = iTextSharp.text.FontFactory.GetFont(iTextSharp.text.FontFactory.HELVETICA_BOLD, 14);
+                    var title = new Paragraph($"Maintenance History - {_vehicle.Make} {_vehicle.Model}", titleFont);
+                    title.Alignment = Element.ALIGN_CENTER;
+                    document.Add(title);
+                    document.Add(new Paragraph("\n"));
+
+                    // Add statistics
+                    var normalFont = iTextSharp.text.FontFactory.GetFont(iTextSharp.text.FontFactory.HELVETICA, 10);
+                    document.Add(new Paragraph(_totalCostLabel.Text, normalFont));
+                    document.Add(new Paragraph(_lastServiceLabel.Text, normalFont));
+                    document.Add(new Paragraph("\n"));
+
+                    // Create table
+                    var table = new PdfPTable(_maintenanceList.Columns.Count);
+                    table.WidthPercentage = 100;
+
+                    // Add headers
+                    var headerFont = iTextSharp.text.FontFactory.GetFont(iTextSharp.text.FontFactory.HELVETICA_BOLD, 10);
+                    foreach (ColumnHeader column in _maintenanceList.Columns)
+                    {
+                        table.AddCell(new PdfPCell(new Phrase(column.Text, headerFont)));
+                    }
+
+                    // Add data in chunks with progress updates
+                    const int chunkSize = 100;
+                    int totalItems = _maintenanceList.Items.Count;
+
+                    for (int i = 0; i < totalItems; i += chunkSize)
+                    {
+                        var chunk = _maintenanceList.Items.Cast<ListViewItem>()
+                            .Skip(i)
+                            .Take(chunkSize);
+
+                        foreach (var item in chunk)
+                        {
+                            foreach (ListViewItem.ListViewSubItem subItem in item.SubItems)
+                            {
+                                table.AddCell(new PdfPCell(new Phrase(subItem.Text, normalFont)));
+                            }
+                        }
+
+                        // Update progress
+                        int progress = (i + chunkSize) * 100 / totalItems;
+                        _progressDialog?.UpdateProgress(Math.Min(progress, 100));
+                        _progressDialog?.UpdateStatus($"Exporting data... {progress}%");
+                    }
+
+                    _progressDialog?.UpdateStatus("Saving file...");
+                    document.Add(table);
+                    document.Close();
+                }
+            });
+        }
+
+        private async Task ExportToCsvAsync(string filePath)
+        {
+            await Task.Run(() =>
+            {
+                using (var writer = new StreamWriter(filePath))
+                {
+                    // Write header
+                    writer.WriteLine(string.Join(",", _maintenanceList.Columns.Cast<ColumnHeader>()
+                        .Select(c => $"\"{c.Text}\"")));
+
+                    // Write data in chunks with progress updates
+                    const int chunkSize = 100;
+                    int totalItems = _maintenanceList.Items.Count;
+
+                    for (int i = 0; i < totalItems; i += chunkSize)
+                    {
+                        var chunk = _maintenanceList.Items.Cast<ListViewItem>()
+                            .Skip(i)
+                            .Take(chunkSize);
+
+                        foreach (var item in chunk)
+                        {
+                            writer.WriteLine(string.Join(",", item.SubItems.Cast<ListViewItem.ListViewSubItem>()
+                                .Select(subItem => $"\"{subItem.Text.Replace("\"", "\"\"")}\"")));
+                        }
+
+                        // Update progress
+                        int progress = (i + chunkSize) * 100 / totalItems;
+                        _progressDialog?.UpdateProgress(Math.Min(progress, 100));
+                        _progressDialog?.UpdateStatus($"Exporting data... {progress}%");
+                    }
+                }
+            });
         }
 
         /// <summary>
         /// Handles click event for Print History button
         /// </summary>
-        private void PrintBtn_Click(object sender, EventArgs e)
+        private async void PrintBtn_Click(object sender, EventArgs e)
         {
             try
             {
@@ -472,21 +624,39 @@ namespace AutoCarePro.Forms
                 var printDocument = new System.Drawing.Printing.PrintDocument();
                 printDocument.PrintPage += PrintDocument_PrintPage;
 
-                var printDialog = new PrintDialog
+                using (_progressDialog = new ProgressDialog("Preparing Print Preview", "Please wait..."))
                 {
-                    Document = printDocument,
-                    AllowSomePages = true
-                };
+                    _progressDialog.Show();
 
-                if (printDialog.ShowDialog() == DialogResult.OK)
-                {
-                    printDocument.Print();
+                    // Calculate total pages in background
+                    int totalPages = await Task.Run(() =>
+                    {
+                        int recordsPerPage = 30; // Approximate number of records per page
+                        return (int)Math.Ceiling(_maintenanceList.Items.Count / (double)recordsPerPage);
+                    });
+
+                    using (var previewDialog = new PrintPreviewDialog
+                    {
+                        Document = printDocument,
+                        Width = 1000,
+                        Height = 800,
+                        StartPosition = FormStartPosition.CenterParent
+                    })
+                    {
+                        _progressDialog.Close();
+                        previewDialog.ShowDialog();
+                    }
                 }
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error printing maintenance history: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _progressDialog?.Close();
+                _progressDialog = null;
             }
         }
 
@@ -523,6 +693,12 @@ namespace AutoCarePro.Forms
                 y = 160;
                 int recordsPerPage = (int)((e.MarginBounds.Height - (y - e.MarginBounds.Top)) / 20);
                 int recordCount = 0;
+
+                // Calculate progress
+                int totalPages = (int)Math.Ceiling(_maintenanceList.Items.Count / (double)recordsPerPage);
+                int currentPage = _printRecordIndex / recordsPerPage + 1;
+                _progressDialog?.UpdateStatus($"Printing page {currentPage} of {totalPages}");
+
                 for (; _printRecordIndex < _maintenanceList.Items.Count && recordCount < recordsPerPage; _printRecordIndex++, recordCount++)
                 {
                     x = 50;
@@ -543,6 +719,66 @@ namespace AutoCarePro.Forms
                 MessageBox.Show($"Error printing page: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+    }
+
+    /// <summary>
+    /// A reusable progress dialog form
+    /// </summary>
+    public class ProgressDialog : Form
+    {
+        private ProgressBar _progressBar;
+        private Label _statusLabel;
+
+        public ProgressDialog(string title, string initialStatus)
+        {
+            this.Text = title;
+            this.Size = new Size(400, 150);
+            this.StartPosition = FormStartPosition.CenterParent;
+            this.FormBorderStyle = FormBorderStyle.FixedDialog;
+            this.MinimizeBox = false;
+            this.MaximizeBox = false;
+
+            _progressBar = new ProgressBar
+            {
+                Dock = DockStyle.Bottom,
+                Height = 23,
+                Style = ProgressBarStyle.Marquee
+            };
+
+            _statusLabel = new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = initialStatus,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe UI", 10)
+            };
+
+            this.Controls.Add(_statusLabel);
+            this.Controls.Add(_progressBar);
+        }
+
+        public void UpdateProgress(int percentage)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action<int>(UpdateProgress), percentage);
+                return;
+            }
+
+            _progressBar.Style = ProgressBarStyle.Continuous;
+            _progressBar.Value = percentage;
+        }
+
+        public void UpdateStatus(string status)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action<string>(UpdateStatus), status);
+                return;
+            }
+
+            _statusLabel.Text = status;
         }
     }
 }

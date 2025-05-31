@@ -6,6 +6,8 @@ using AutoCarePro.Models;
 using AutoCarePro.Data;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace AutoCarePro.Services
 {
@@ -45,7 +47,9 @@ namespace AutoCarePro.Services
         /// Service for validating data before database operations.
         /// This ensures data integrity and business rule compliance.
         /// </summary>
-        private readonly DataValidationService _validationService;
+        private readonly UnifiedValidationService _validationService;
+
+        private readonly ILogger<DatabaseService> _logger;
 
         private bool _disposed = false;
 
@@ -53,13 +57,14 @@ namespace AutoCarePro.Services
         /// Constructor initializes the database context and validation service.
         /// This sets up the necessary components for database operations.
         /// </summary>
-        public DatabaseService()
+        public DatabaseService(ILogger<DatabaseService> logger)
         {
             var options = new DbContextOptionsBuilder<AutoCareProContext>()
                 .UseSqlite(GetConnectionString())
                 .Options;
             _context = new AutoCareProContext(options);
-            _validationService = new DataValidationService();
+            _validationService = new UnifiedValidationService();
+            _logger = logger;
         }
 
         private string GetConnectionString()
@@ -313,12 +318,20 @@ namespace AutoCarePro.Services
         /// </summary>
         /// <param name="id">The vehicle ID to look up</param>
         /// <returns>The vehicle if found, null otherwise</returns>
-        public Vehicle GetVehicleById(int id)
+        public async Task<Vehicle?> GetVehicleByIdAsync(int id)
         {
-            return _context.Vehicles
-                .Include(v => v.MaintenanceHistory)
-                .Include(v => v.Recommendations)
-                .FirstOrDefault(v => v.Id == id);
+            try
+            {
+                return await _context.Vehicles
+                    .Include(v => v.User)
+                    .Include(v => v.MaintenanceRecords)
+                    .FirstOrDefaultAsync(v => v.Id == id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting vehicle by ID: {Id}", id);
+                return null;
+            }
         }
 
         /// <summary>
@@ -366,7 +379,7 @@ namespace AutoCarePro.Services
         {
             return _context.MaintenanceRecords
                 .Where(m => m.VehicleId == vehicleId)
-                .OrderByDescending(m => m.MaintenanceDate)
+                .OrderByDescending(m => m.ServiceDate)
                 .ToList();
         }
 
@@ -383,78 +396,46 @@ namespace AutoCarePro.Services
                 .ToList();
         }
 
-        #endregion
-
-        #region Save Operations
-
         /// <summary>
-        /// Saves all pending changes to the database.
-        /// This method commits any pending database operations.
+        /// Gets a specific maintenance record by its ID.
+        /// This method retrieves a maintenance record with its associated vehicle and service provider.
         /// 
-        /// Usage:
-        /// Call this method after making multiple changes
-        /// that should be committed together.
+        /// Process:
+        /// 1. Finds record by ID
+        /// 2. Includes related vehicle and service provider data
+        /// 3. Returns record object
         /// </summary>
-        public void SaveChanges()
+        /// <param name="id">The ID of the maintenance record</param>
+        /// <returns>The maintenance record if found, null otherwise</returns>
+        public async Task<MaintenanceRecord?> GetMaintenanceRecordByIdAsync(int id)
         {
-            _context.SaveChanges();
+            try
+            {
+                return await _context.MaintenanceRecords
+                    .Include(r => r.Vehicle)
+                    .Include(r => r.ServiceProvider)
+                    .FirstOrDefaultAsync(r => r.Id == id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting maintenance record by ID: {Id}", id);
+                return null;
+            }
         }
 
         /// <summary>
-        /// Adds a new vehicle to the database.
-        /// This method handles the complete vehicle registration process.
-        /// 
-        /// Process:
-        /// 1. Validates vehicle data
-        /// 2. Adds vehicle to database
-        /// 3. Saves changes
-        /// 
-        /// Validation:
-        /// - All required fields must be valid
-        /// - Vehicle must be associated with a user
+        /// Gets all maintenance records for a specific vehicle.
         /// </summary>
-        /// <param name="vehicle">The vehicle to add</param>
-        /// <exception cref="ValidationException">Thrown when vehicle data is invalid</exception>
-        public void AddVehicle(Vehicle vehicle)
+        /// <param name="vehicleId">The ID of the vehicle</param>
+        /// <returns>A list of maintenance records for the vehicle</returns>
+        public async Task<List<MaintenanceRecord>> GetMaintenanceRecordsByVehicle(int vehicleId)
         {
-            var validationResult = _validationService.ValidateVehicle(vehicle);
-            if (!validationResult.IsValid)
-            {
-                throw new ValidationException(validationResult.GetErrorMessage());
-            }
-
-            _context.Vehicles.Add(vehicle);
-            _context.SaveChanges();
-        }
-
-        /// <summary>
-        /// Deletes a vehicle and all its associated records.
-        /// This method handles the complete vehicle removal process.
-        /// 
-        /// Process:
-        /// 1. Finds vehicle by ID
-        /// 2. Removes all associated records
-        /// 3. Deletes vehicle
-        /// 4. Saves changes
-        /// 
-        /// Note:
-        /// This operation is permanent and cannot be undone.
-        /// </summary>
-        /// <param name="vehicleId">The ID of the vehicle to delete</param>
-        public void DeleteVehicle(int vehicleId)
-        {
-            var vehicle = _context.Vehicles
-                .Include(v => v.MaintenanceHistory)
-                .Include(v => v.Recommendations)
-                .FirstOrDefault(v => v.Id == vehicleId);
-
-            if (vehicle != null)
-            {
-                _context.MaintenanceRecords.RemoveRange(vehicle.MaintenanceHistory);
-                _context.MaintenanceRecommendations.RemoveRange(vehicle.Recommendations);
-                _context.Vehicles.Remove(vehicle);
-                _context.SaveChanges();
-            }
+            using var context = new AutoCareProContext();
+            return await context.MaintenanceRecords
+                .Include(r => r.ServiceProvider)
+                .Where(r => r.VehicleId == vehicleId)
+                .OrderByDescending(r => r.ServiceDate)
+                .ToListAsync();
         }
 
         /// <summary>
@@ -474,24 +455,19 @@ namespace AutoCarePro.Services
         /// </summary>
         /// <param name="record">The maintenance record to add</param>
         /// <exception cref="ValidationException">Thrown when maintenance data is invalid</exception>
-        public void AddMaintenanceRecord(MaintenanceRecord record)
+        public async Task<bool> AddMaintenanceRecordAsync(MaintenanceRecord record)
         {
-            var validationResult = _validationService.ValidateMaintenanceRecord(record);
-            if (!validationResult.IsValid)
+            try
             {
-                throw new ValidationException(validationResult.GetErrorMessage());
+                await _context.MaintenanceRecords.AddAsync(record);
+                await _context.SaveChangesAsync();
+                return true;
             }
-
-            _context.MaintenanceRecords.Add(record);
-            
-            // Update vehicle's last maintenance date
-            var vehicle = _context.Vehicles.Find(record.VehicleId);
-            if (vehicle != null)
+            catch (Exception ex)
             {
-                vehicle.LastMaintenanceDate = record.MaintenanceDate;
+                _logger.LogError(ex, "Error adding maintenance record: {Record}", record);
+                return false;
             }
-
-            _context.SaveChanges();
         }
 
         /// <summary>
@@ -508,13 +484,24 @@ namespace AutoCarePro.Services
         /// This operation is permanent and cannot be undone.
         /// </summary>
         /// <param name="recordId">The ID of the maintenance record to delete</param>
-        public void DeleteMaintenanceRecord(int recordId)
+        public async Task<bool> DeleteMaintenanceRecord(int id)
         {
-            var record = _context.MaintenanceRecords.Find(recordId);
-            if (record != null)
+            try
             {
+                var record = await _context.MaintenanceRecords.FindAsync(id);
+                if (record == null)
+                {
+                    return false;
+                }
+
                 _context.MaintenanceRecords.Remove(record);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting maintenance record");
+                return false;
             }
         }
 
@@ -534,13 +521,18 @@ namespace AutoCarePro.Services
         /// </summary>
         /// <param name="record">The maintenance record with updated information</param>
         /// <exception cref="ValidationException">Thrown when record data is invalid</exception>
-        public void UpdateMaintenanceRecord(MaintenanceRecord record)
+        public async Task<bool> UpdateMaintenanceRecordAsync(MaintenanceRecord record)
         {
-            var existingRecord = _context.MaintenanceRecords.Find(record.Id);
-            if (existingRecord != null)
+            try
             {
-                _context.Entry(existingRecord).CurrentValues.SetValues(record);
-                _context.SaveChanges();
+                _context.MaintenanceRecords.Update(record);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating maintenance record: {Record}", record);
+                return false;
             }
         }
 
@@ -832,11 +824,50 @@ namespace AutoCarePro.Services
 
         public List<Vehicle> GetAllVehicles()
         {
-            using (var context = new AutoCareProContext())
+            return _context.Vehicles.ToList();
+        }
+
+        public bool AddVehicle(Vehicle vehicle)
+        {
+            try
             {
-                return context.Vehicles
-                    .Include(v => v.User)
-                    .ToList();
+                var validationResult = _validationService.ValidateVehicle(vehicle);
+                if (!validationResult.IsValid)
+                {
+                    throw new ValidationException(validationResult.GetErrorMessage());
+                }
+
+                _context.Vehicles.Add(vehicle);
+                _context.SaveChanges();
+                return true;
+            }
+            catch (ValidationException)
+            {
+                throw;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public bool DeleteVehicle(int vehicleId)
+        {
+            try
+            {
+                var vehicle = _context.Vehicles.Find(vehicleId);
+                if (vehicle == null)
+                {
+                    return false;
+                }
+
+                _context.Vehicles.Remove(vehicle);
+                _context.SaveChanges();
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -846,7 +877,7 @@ namespace AutoCarePro.Services
             {
                 return context.MaintenanceRecords
                     .Include(m => m.Vehicle)
-                    .OrderByDescending(m => m.MaintenanceDate)
+                    .OrderByDescending(m => m.ServiceDate)
                     .Take(count)
                     .ToList();
             }
@@ -857,7 +888,8 @@ namespace AutoCarePro.Services
             return _context.Appointments
                 .Include(a => a.Vehicle)
                 .Include(a => a.MaintenanceCenter)
-                .Where(a => a.MaintenanceCenterId == maintenanceCenterId)
+                .Where(a => a.MaintenanceCenterId == maintenanceCenterId && 
+                           a.AppointmentDate >= DateTime.Now)
                 .OrderBy(a => a.AppointmentDate)
                 .ToList();
         }
@@ -889,6 +921,118 @@ namespace AutoCarePro.Services
                 .ToList();
         }
 
+        public void AddAppointment(Appointment appointment)
+        {
+            _context.Appointments.Add(appointment);
+            _context.SaveChanges();
+        }
+
+        public void UpdateAppointment(Appointment appointment)
+        {
+            var existingAppointment = _context.Appointments.Find(appointment.Id);
+            if (existingAppointment != null)
+            {
+                _context.Entry(existingAppointment).CurrentValues.SetValues(appointment);
+                existingAppointment.UpdatedAt = DateTime.Now;
+                _context.SaveChanges();
+            }
+        }
+
+        public void DeleteAppointment(int appointmentId)
+        {
+            var appointment = _context.Appointments.Find(appointmentId);
+            if (appointment != null)
+            {
+                _context.Appointments.Remove(appointment);
+                _context.SaveChanges();
+            }
+        }
+
+        public Appointment GetAppointmentById(int appointmentId)
+        {
+            return _context.Appointments
+                .Include(a => a.Vehicle)
+                .Include(a => a.MaintenanceCenter)
+                .Include(a => a.ServiceProvider)
+                .FirstOrDefault(a => a.Id == appointmentId);
+        }
+
+        public List<Appointment> GetAppointmentsByVehicle(int vehicleId)
+        {
+            return _context.Appointments
+                .Include(a => a.Vehicle)
+                .Include(a => a.ServiceProvider)
+                .Where(a => a.VehicleId == vehicleId)
+                .ToList();
+        }
+
+        public Service GetServiceById(int serviceId)
+        {
+            return _context.Services
+                .Include(s => s.ServiceProvider)
+                .Include(s => s.Bookings)
+                .FirstOrDefault(s => s.Id == serviceId);
+        }
+
+        public void AddService(Service service)
+        {
+            _context.Services.Add(service);
+            _context.SaveChanges();
+        }
+
+        public void UpdateService(Service service)
+        {
+            var existingService = _context.Services.Find(service.Id);
+            if (existingService != null)
+            {
+                _context.Entry(existingService).CurrentValues.SetValues(service);
+                _context.SaveChanges();
+            }
+        }
+
+        public void DeleteService(int serviceId)
+        {
+            var service = _context.Services.Find(serviceId);
+            if (service != null)
+            {
+                _context.Services.Remove(service);
+                _context.SaveChanges();
+            }
+        }
+
+        public Review GetReviewById(int reviewId)
+        {
+            return _context.Reviews
+                .Include(r => r.ServiceProvider)
+                .FirstOrDefault(r => r.Id == reviewId);
+        }
+
+        public void AddReview(Review review)
+        {
+            _context.Reviews.Add(review);
+            _context.SaveChanges();
+        }
+
+        public void UpdateReview(Review review)
+        {
+            var existingReview = _context.Reviews.Find(review.Id);
+            if (existingReview != null)
+            {
+                _context.Entry(existingReview).CurrentValues.SetValues(review);
+                _context.SaveChanges();
+            }
+        }
+
+        public void DeleteReview(int reviewId)
+        {
+            var review = _context.Reviews.Find(reviewId);
+            if (review != null)
+            {
+                _context.Reviews.Remove(review);
+                _context.SaveChanges();
+            }
+        }
+
         protected virtual void Dispose(bool disposing)
         {
             if (!_disposed)
@@ -910,6 +1054,146 @@ namespace AutoCarePro.Services
         ~DatabaseService()
         {
             Dispose(false);
+        }
+
+        public async Task<List<Service>> GetServicesByProviderIdAsync(int providerId)
+        {
+            return await _context.Services
+                .Where(s => s.ProviderId == providerId)
+                .ToListAsync();
+        }
+
+        public async Task<bool> DeleteServiceAsync(int serviceId)
+        {
+            try
+            {
+                var service = await _context.Services.FindAsync(serviceId);
+                if (service != null)
+                {
+                    _context.Services.Remove(service);
+                    await _context.SaveChangesAsync();
+                    return true;
+                }
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public async Task<bool> AddUserAsync(User user)
+        {
+            try
+            {
+                // Validate user data before registration
+                var validationResult = _validationService.ValidateUser(user);
+                if (!validationResult.IsValid)
+                {
+                    throw new ValidationException(validationResult.GetErrorMessage());
+                }
+
+                // Check for duplicate username
+                if (await _context.Users.AnyAsync(u => u.Username == user.Username))
+                {
+                    return false;
+                }
+
+                // Check for duplicate email
+                if (await _context.Users.AnyAsync(u => u.Email == user.Email))
+                {
+                    return false;
+                }
+
+                await _context.Users.AddAsync(user);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (ValidationException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error adding user");
+                return false;
+            }
+        }
+
+        public Vehicle? GetVehicleById(int id)
+        {
+            return _context.Vehicles
+                .Include(v => v.MaintenanceRecords)
+                .FirstOrDefault(v => v.Id == id);
+        }
+
+        public async Task<bool> AddMaintenanceRecord(MaintenanceRecord record)
+        {
+            try
+            {
+                // Validate the record
+                if (record == null)
+                {
+                    throw new ArgumentNullException(nameof(record));
+                }
+
+                // Check if the vehicle exists
+                var vehicle = await _context.Vehicles.FindAsync(record.VehicleId);
+                if (vehicle == null)
+                {
+                    throw new ValidationException("Vehicle not found");
+                }
+
+                await _context.MaintenanceRecords.AddAsync(record);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error adding maintenance record");
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateMaintenanceRecord(MaintenanceRecord record)
+        {
+            try
+            {
+                if (record == null)
+                {
+                    throw new ArgumentNullException(nameof(record));
+                }
+
+                var existingRecord = await _context.MaintenanceRecords.FindAsync(record.Id);
+                if (existingRecord == null)
+                {
+                    throw new ValidationException("Maintenance record not found");
+                }
+
+                _context.Entry(existingRecord).CurrentValues.SetValues(record);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating maintenance record");
+                return false;
+            }
+        }
+
+        public async Task<List<MaintenanceRecord>> GetMaintenanceRecordsByVehicleId(int vehicleId)
+        {
+            return await _context.MaintenanceRecords
+                .Where(r => r.VehicleId == vehicleId)
+                .OrderByDescending(r => r.Date)
+                .ToListAsync();
+        }
+
+        public async Task<MaintenanceRecord?> GetMaintenanceRecordById(int id)
+        {
+            return await _context.MaintenanceRecords
+                .Include(r => r.Vehicle)
+                .FirstOrDefaultAsync(r => r.Id == id);
         }
     }
 

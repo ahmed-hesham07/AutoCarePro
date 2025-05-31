@@ -1,5 +1,7 @@
 using System; // Import the System namespace for basic types like DateTime
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace AutoCarePro.Models
 {
@@ -28,6 +30,7 @@ namespace AutoCarePro.Models
         /// This is automatically generated when a new record is created.
         /// Used for database relationships and record identification.
         /// </summary>
+        [Key]
         public int Id { get; set; }
 
         /// <summary>
@@ -35,7 +38,16 @@ namespace AutoCarePro.Models
         /// This creates a relationship between the maintenance record
         /// and the specific vehicle in the database.
         /// </summary>
+        [Required]
         public int VehicleId { get; set; }
+
+        /// <summary>
+        /// Foreign key to the Service Provider this maintenance record belongs to.
+        /// This creates a relationship between the maintenance record
+        /// and the specific service provider in the database.
+        /// </summary>
+        [Required]
+        public int ServiceProviderId { get; set; }
 
         /// <summary>
         /// The date when the maintenance was performed.
@@ -44,7 +56,18 @@ namespace AutoCarePro.Models
         /// - Service interval calculations
         /// - Maintenance reporting
         /// </summary>
-        public DateTime MaintenanceDate { get; set; }
+        [Required]
+        public DateTime ServiceDate { get; set; }
+
+        /// <summary>
+        /// Alias for ServiceDate to maintain compatibility
+        /// </summary>
+        [NotMapped]
+        public DateTime MaintenanceDate
+        {
+            get => ServiceDate;
+            set => ServiceDate = value;
+        }
 
         /// <summary>
         /// The type of maintenance performed (e.g., Oil Change, Brake Service).
@@ -53,7 +76,9 @@ namespace AutoCarePro.Models
         /// - Service recommendations
         /// - Maintenance reporting
         /// </summary>
-        public required string MaintenanceType { get; set; }
+        [Required]
+        [StringLength(50)]
+        public string MaintenanceType { get; set; }
 
         /// <summary>
         /// Detailed description of the maintenance work performed.
@@ -63,7 +88,9 @@ namespace AutoCarePro.Models
         /// - Special procedures
         /// - Any issues found
         /// </summary>
-        public required string Description { get; set; }
+        [Required]
+        [StringLength(500)]
+        public string Description { get; set; }
 
         /// <summary>
         /// The vehicle's mileage at the time of maintenance.
@@ -72,7 +99,18 @@ namespace AutoCarePro.Models
         /// - Service recommendations
         /// - Vehicle history documentation
         /// </summary>
-        public int MileageAtMaintenance { get; set; }
+        [Required]
+        public int Mileage { get; set; }
+
+        /// <summary>
+        /// Alias for Mileage to maintain compatibility
+        /// </summary>
+        [NotMapped]
+        public int MileageAtMaintenance
+        {
+            get => Mileage;
+            set => Mileage = value;
+        }
 
         /// <summary>
         /// The cost of the maintenance in the system's currency.
@@ -81,16 +119,9 @@ namespace AutoCarePro.Models
         /// - Maintenance budgeting
         /// - Financial reporting
         /// </summary>
+        [Required]
+        [Column(TypeName = "decimal(18,2)")]
         public decimal Cost { get; set; }
-
-        /// <summary>
-        /// The name of the service provider or garage that performed the maintenance.
-        /// This is used for:
-        /// - Service provider tracking
-        /// - Maintenance history documentation
-        /// - Service quality assessment
-        /// </summary>
-        public required string ServiceProvider { get; set; }
 
         /// <summary>
         /// Additional notes or comments about the maintenance.
@@ -100,16 +131,8 @@ namespace AutoCarePro.Models
         /// - Important observations
         /// - Customer feedback
         /// </summary>
-        public required string Notes { get; set; }
-
-        /// <summary>
-        /// Indicates whether this maintenance record has associated diagnosis recommendations.
-        /// This is used to:
-        /// - Track diagnosis status
-        /// - Filter maintenance records
-        /// - Generate maintenance reports
-        /// </summary>
-        public bool HasDiagnosisRecommendations { get; set; }
+        [StringLength(1000)]
+        public string Notes { get; set; }
 
         /// <summary>
         /// Timestamp when this maintenance record was created.
@@ -119,7 +142,7 @@ namespace AutoCarePro.Models
         /// - Record tracking
         /// - System maintenance
         /// </summary>
-        public DateTime CreatedAt { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         /// <summary>
         /// Timestamp when this maintenance record was last updated.
@@ -129,14 +152,23 @@ namespace AutoCarePro.Models
         /// - Audit trailing
         /// - Data integrity
         /// </summary>
-        public DateTime UpdatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
 
         /// <summary>
         /// Navigation property to the Vehicle associated with this maintenance record.
         /// This allows easy access to the vehicle's information
         /// when working with maintenance data.
         /// </summary>
-        public required Vehicle Vehicle { get; set; }
+        [ForeignKey("VehicleId")]
+        public Vehicle Vehicle { get; set; }
+
+        /// <summary>
+        /// Navigation property to the Service Provider associated with this maintenance record.
+        /// This allows easy access to the service provider's information
+        /// when working with maintenance data.
+        /// </summary>
+        [ForeignKey("ServiceProviderId")]
+        public User ServiceProvider { get; set; }
 
         /// <summary>
         /// Collection of diagnosis recommendations associated with this maintenance record.
@@ -160,11 +192,15 @@ namespace AutoCarePro.Models
         /// </summary>
         public int? DiagnosedByUserId { get; set; }
 
+        /// <summary>
+        /// Property to check if there are any diagnosis recommendations
+        /// </summary>
+        [NotMapped]
+        public bool HasDiagnosisRecommendations => DiagnosisRecommendations?.Count > 0;
+
         public MaintenanceRecord()
         {
             DiagnosisRecommendations = new List<DiagnosisRecommendation>();
-            CreatedAt = DateTime.Now;
-            UpdatedAt = DateTime.Now;
             IsCompleted = false;
         }
     }

@@ -5,6 +5,7 @@ using System.Text;
 using AutoCarePro.Models;
 using AutoCarePro.Services;
 using AutoCarePro.UI;
+using Microsoft.Extensions.Logging;
 
 namespace AutoCarePro.Forms
 {
@@ -22,12 +23,23 @@ namespace AutoCarePro.Forms
     /// - Input validation
     /// - Error handling and user feedback
     /// </summary>
-    public partial class LoginForm : Form
+    public partial class LoginForm : BaseForm
     {
         // Service for database operations - handles user authentication and data persistence
-        private readonly DatabaseService _dbService = new DatabaseService();
+        private readonly DatabaseService _databaseService;
         // Flag to track authentication status - used to prevent multiple login attempts
         private bool _isAuthenticated = false;
+        private readonly ILogger<LoginForm> _logger;
+
+        /// <summary>
+        /// Gets whether the user has been successfully authenticated.
+        /// </summary>
+        public bool IsAuthenticated => _isAuthenticated;
+
+        /// <summary>
+        /// Gets the currently logged in user.
+        /// </summary>
+        public User CurrentUser { get; private set; }
 
         /// <summary>
         /// Constructor initializes the login form and checks for saved sessions.
@@ -35,8 +47,10 @@ namespace AutoCarePro.Forms
         /// It sets up the database service, initializes the form layout,
         /// and checks if there's a saved session for automatic login.
         /// </summary>
-        public LoginForm()
+        public LoginForm(ILogger<LoginForm> logger)
         {
+            _logger = logger;
+            _databaseService = ServiceFactory.GetDatabaseService();
             InitializeComponent();
             SetupForm();
             CheckForSavedSession();
@@ -54,19 +68,17 @@ namespace AutoCarePro.Forms
             if (session != null)
             {
                 // Verify the user still exists in the database
-                var user = _dbService.GetUserById(session.UserId);
+                var user = _databaseService.GetUserById(session.UserId);
                 if (user != null)
                 {
                     // Update authentication status and last login time
                     _isAuthenticated = true;
+                    CurrentUser = user;
                     user.LastLoginDate = DateTime.Now;
-                    _dbService.UpdateUser(user);
+                    _databaseService.UpdateUser(user);
 
-                    // Open the dashboard and handle form closing
-                    this.Hide();
-                    var dashboard = new DashboardForm(user);
-                    dashboard.FormClosed += (s, e) => this.Close();
-                    dashboard.Show();
+                    this.DialogResult = DialogResult.OK;
+                    this.Close();
                 }
                 else
                 {
@@ -121,6 +133,7 @@ namespace AutoCarePro.Forms
                 Size = new System.Drawing.Size(280, 25)
             };
             UIStyles.ApplyTextBoxStyle(txtUsername);
+            TooltipService.SetTooltip(txtUsername, "Enter your username");
 
             // Create password input field with label
             var lblPassword = new Label
@@ -139,6 +152,7 @@ namespace AutoCarePro.Forms
                 PasswordChar = '•'
             };
             UIStyles.ApplyTextBoxStyle(txtPassword);
+            TooltipService.SetTooltip(txtPassword, "Enter your password");
 
             // Create forgot password link
             var lblForgotPassword = new LinkLabel
@@ -148,6 +162,7 @@ namespace AutoCarePro.Forms
                 AutoSize = true
             };
             UIStyles.ApplyLinkLabelStyle(lblForgotPassword);
+            TooltipService.SetTooltip(lblForgotPassword, "Click here if you forgot your password");
 
             // Create remember me checkbox
             var chkRememberMe = new CheckBox
@@ -157,6 +172,7 @@ namespace AutoCarePro.Forms
                 AutoSize = true
             };
             UIStyles.ApplyCheckBoxStyle(chkRememberMe);
+            TooltipService.SetTooltip(chkRememberMe, "Keep me logged in on this computer");
 
             // Create and configure the login button
             var btnLogin = new Button
@@ -166,6 +182,7 @@ namespace AutoCarePro.Forms
                 Size = new System.Drawing.Size(280, 35)
             };
             UIStyles.ApplyButtonStyle(btnLogin, true);
+            TooltipService.SetTooltip(btnLogin, "Click to sign in to your account");
 
             // Create and configure the register button
             var btnRegister = new Button
@@ -175,6 +192,7 @@ namespace AutoCarePro.Forms
                 Size = new System.Drawing.Size(280, 35)
             };
             UIStyles.ApplyButtonStyle(btnRegister);
+            TooltipService.SetTooltip(btnRegister, "Create a new account if you don't have one");
 
             // Add event handlers for buttons and links
             btnLogin.Click += (s, e) => HandleLogin(txtUsername.Text, txtPassword.Text, chkRememberMe.Checked);
@@ -207,8 +225,7 @@ namespace AutoCarePro.Forms
             // Validate that both username and password are provided
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
             {
-                MessageBox.Show("Please enter both username and password.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowError("Please enter both username and password.");
                 return;
             }
 
@@ -216,63 +233,46 @@ namespace AutoCarePro.Forms
             {
                 // Hash password for secure comparison
                 var hashedPassword = HashPassword(password);
-                Console.WriteLine($"Attempting login for user: {username}");
-                Console.WriteLine($"Hashed password: {hashedPassword}");
+                _logger.LogInformation("Attempting login for user: {Username}", username);
 
-                var user = _dbService.AuthenticateUser(username, hashedPassword);
-                Console.WriteLine($"Authentication result: {(user != null ? "Success" : "Failed")}");
+                var user = _databaseService.AuthenticateUser(username, hashedPassword);
+                _logger.LogInformation("Authentication result: {Result}", user != null ? "Success" : "Failed");
 
                 if (user != null)
                 {
                     // Seed test data for test user
                     if (username == "test" && password == "test123")
                     {
-                        Console.WriteLine("Test user detected, seeding test data...");
-                        var seeder = new DataSeeder(_dbService);
+                        _logger.LogInformation("Test user detected, seeding test data...");
+                        var seeder = new DataSeeder(_databaseService);
                         seeder.SeedTestData(user.Id);
-                        Console.WriteLine("Test data seeded successfully");
                     }
 
                     // Update authentication status and last login time
                     _isAuthenticated = true;
+                    CurrentUser = user;
                     user.LastLoginDate = DateTime.Now;
-                    _dbService.UpdateUser(user);
+                    _databaseService.UpdateUser(user);
 
-                    // Save session if "Remember Me" is checked
+                    // Handle session management
                     if (rememberMe)
                     {
-                        SessionManager.SaveSession(user, true);
+                        SessionManager.StartSession(user);
+                        SessionManager.SaveSession();
                     }
 
-                    // Open the appropriate dashboard based on user type
-                    this.Hide();
-                    Form dashboard;
-                    switch (user.Type)
-                    {
-                        case UserType.CarOwner:
-                            dashboard = new CarOwnerDashboardForm(user);
-                            break;
-                        case UserType.MaintenanceCenter:
-                            dashboard = new MaintenanceCenterDashboardForm(user);
-                            break;
-                        default:
-                            MessageBox.Show("Unsupported user type.", "Error",
-                                MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            return;
-                    }
-                    dashboard.FormClosed += (s, e) => this.Close();
-                    dashboard.Show();
+                    this.DialogResult = DialogResult.OK;
+                    this.Close();
                 }
                 else
                 {
-                    MessageBox.Show("Invalid username or password.", "Authentication Failed",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    ShowError("Invalid username or password.");
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"An error occurred: {ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _logger.LogError(ex, "Error during login attempt");
+                ShowError("An error occurred during login. Please try again.");
             }
         }
 
@@ -284,7 +284,7 @@ namespace AutoCarePro.Forms
         /// </summary>
         private void OpenRegistrationForm()
         {
-            var registerForm = new RegisterForm();
+            var registerForm = new RegisterForm(_logger);
             registerForm.FormClosed += (s, e) => this.Show();
             this.Hide();
             registerForm.Show();
@@ -298,7 +298,7 @@ namespace AutoCarePro.Forms
         /// </summary>
         private void OpenPasswordResetForm()
         {
-            var resetForm = new PasswordResetForm();
+            var resetForm = new PasswordResetForm(_logger);
             resetForm.FormClosed += (s, e) => this.Show();
             this.Hide();
             resetForm.Show();

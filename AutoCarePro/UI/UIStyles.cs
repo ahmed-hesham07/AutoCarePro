@@ -20,50 +20,6 @@ namespace AutoCarePro.UI
             public static Color Border = Color.FromArgb(206, 212, 218);     // Light Border
         }
 
-        // Allow dynamic accent color change
-        public static void SetAccentColor(Color color)
-        {
-            Colors.Primary = color;
-        }
-
-        // Refresh all styled controls in a form (for accent color/theme changes)
-        public static void RefreshStyles(Control control)
-        {
-            if (control is Button btn)
-            {
-                ApplyButtonStyle(btn, btn.BackColor == Colors.Primary);
-            }
-            else if (control is Label lbl)
-            {
-                ApplyLabelStyle(lbl);
-            }
-            else if (control is TextBox txt)
-            {
-                ApplyTextBoxStyle(txt);
-            }
-            else if (control is ComboBox cb)
-            {
-                ApplyComboBoxStyle(cb);
-            }
-            else if (control is ListView lv)
-            {
-                ApplyListViewStyle(lv);
-            }
-            else if (control is GroupBox gb)
-            {
-                ApplyGroupBoxStyle(gb);
-            }
-            else if (control is Panel pnl)
-            {
-                ApplyPanelStyle(pnl);
-            }
-            // Recursively refresh child controls
-            foreach (Control child in control.Controls)
-            {
-                RefreshStyles(child);
-            }
-        }
-
         // Fonts
         public static class Fonts
         {
@@ -118,46 +74,13 @@ namespace AutoCarePro.UI
             
             await Task.Delay(pressDuration);
 
-            // Release animation with easing
-            for (int i = 0; i <= 10; i++)
-            {
-                var progress = (double)i / 10;
-                var easedProgress = EaseOutElastic(progress);
-                
-                button.Size = new Size(
-                    (int)(originalSize.Width - pressDepth * (1 - easedProgress)),
-                    (int)(originalSize.Height - pressDepth * (1 - easedProgress))
-                );
-                
-                button.Location = new Point(
-                    (int)(originalLocation.X + pressDepth * (1 - easedProgress)),
-                    (int)(originalLocation.Y + pressDepth * (1 - easedProgress))
-                );
-                
-                // Gradually restore original colors
-                button.BackColor = InterpolateColor(DarkenColor(originalBackColor, 0.1f), originalBackColor, easedProgress);
-                button.ForeColor = InterpolateColor(DarkenColor(originalForeColor, 0.1f), originalForeColor, easedProgress);
-                
-                await Task.Delay(releaseDuration / 10);
-            }
-
-            // Ensure final state is exactly as original
+            // Release animation
             button.Size = originalSize;
             button.Location = originalLocation;
             button.BackColor = originalBackColor;
             button.ForeColor = originalForeColor;
-        }
-
-        // Easing functions for smoother animations
-        private static double EaseOutCubic(double x)
-        {
-            return 1 - Math.Pow(1 - x, 3);
-        }
-
-        private static double EaseOutElastic(double x)
-        {
-            const double c4 = (2 * Math.PI) / 3;
-            return x == 0 ? 0 : x == 1 ? 1 : Math.Pow(2, -10 * x) * Math.Sin((x * 10 - 0.75) * c4) + 1;
+            
+            await Task.Delay(releaseDuration);
         }
 
         // Color manipulation methods
@@ -196,41 +119,6 @@ namespace AutoCarePro.UI
             button.Font = Fonts.Normal;
             button.Padding = new Padding(10, 5, 10, 5);
             button.Cursor = Cursors.Hand;
-
-            // Add hover effect with smooth transition
-            button.MouseEnter += async (s, e) => {
-                var targetColor = isPrimary ? 
-                    Color.FromArgb(0, 100, 195) : 
-                    Color.FromArgb(230, 230, 230);
-                
-                // Smooth color transition
-                for (int i = 0; i <= 10; i++)
-                {
-                    var progress = (double)i / 10;
-                    button.BackColor = InterpolateColor(button.BackColor, targetColor, progress);
-                    await Task.Delay(5);
-                }
-            };
-
-            button.MouseLeave += async (s, e) => {
-                var targetColor = isPrimary ? Colors.Primary : Colors.Secondary;
-                
-                // Smooth color transition
-                for (int i = 0; i <= 10; i++)
-                {
-                    var progress = (double)i / 10;
-                    button.BackColor = InterpolateColor(button.BackColor, targetColor, progress);
-                    await Task.Delay(5);
-                }
-            };
-
-            // Add press animation
-            button.MouseDown += async (s, e) => {
-                if (e.Button == MouseButtons.Left)
-                {
-                    await AnimateButtonPress(button);
-                }
-            };
         }
 
         // ListView Styles
@@ -322,6 +210,34 @@ namespace AutoCarePro.UI
             linkLabel.Font = Fonts.Normal;
             linkLabel.LinkColor = Colors.Primary;
             linkLabel.ActiveLinkColor = Color.FromArgb(0, 100, 195);
+        }
+
+        public static void ApplyDataGridViewStyle(DataGridView grid)
+        {
+            grid.BackgroundColor = Color.White;
+            grid.BorderStyle = BorderStyle.None;
+            grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(0, 122, 204);
+            grid.DefaultCellStyle.SelectionForeColor = Color.White;
+            grid.DefaultCellStyle.Font = new Font("Segoe UI", 9F);
+            grid.DefaultCellStyle.Padding = new Padding(5);
+            grid.EnableHeadersVisualStyles = false;
+            grid.GridColor = Color.FromArgb(224, 224, 224);
+            grid.RowHeadersVisible = false;
+            grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            grid.AllowUserToAddRows = false;
+            grid.AllowUserToDeleteRows = false;
+            grid.AllowUserToResizeRows = false;
+            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            grid.ReadOnly = true;
+
+            // Style the header
+            grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
+            grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
+            grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(64, 64, 64);
+            grid.ColumnHeadersDefaultCellStyle.Padding = new Padding(5);
+            grid.ColumnHeadersHeight = 40;
+            grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
         }
     }
 } 

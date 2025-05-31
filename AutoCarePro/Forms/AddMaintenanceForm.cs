@@ -49,10 +49,6 @@ namespace AutoCarePro.Forms
         private System.Windows.Forms.Timer _fadeInTimer = new System.Windows.Forms.Timer();
         private double _fadeStep = 0.08;
 
-        // Add at the top of the class
-        private Button _darkModeToggleBtn = new Button();
-        private Button _accentColorBtn = new Button();
-
         /// <summary>
         /// Initializes the maintenance form for adding or editing a record.
         /// This constructor sets up the form based on whether it's being used to add a new record
@@ -90,49 +86,6 @@ namespace AutoCarePro.Forms
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
-
-            // Add dark mode toggle and accent color picker (top-right)
-            _darkModeToggleBtn = new Button
-            {
-                Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙",
-                Width = 40,
-                Height = 40,
-                Top = 10,
-                Left = this.ClientSize.Width - 100,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            UIStyles.ApplyButtonStyle(_darkModeToggleBtn, true);
-            _darkModeToggleBtn.Click += (s, e) => {
-                ThemeManager.Instance.IsDarkMode = !ThemeManager.Instance.IsDarkMode;
-                _darkModeToggleBtn.Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙";
-                ThemeManager.Instance.ApplyTheme(this);
-                UIStyles.RefreshStyles(this);
-            };
-
-            _accentColorBtn = new Button
-            {
-                Text = "🎨",
-                Width = 40,
-                Height = 40,
-                Top = 10,
-                Left = this.ClientSize.Width - 50,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            UIStyles.ApplyButtonStyle(_accentColorBtn, true);
-            _accentColorBtn.Click += (s, e) => {
-                using (var colorDialog = new ColorDialog())
-                {
-                    colorDialog.Color = ThemeManager.Instance.AccentColor;
-                    if (colorDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        ThemeManager.Instance.SetAccentColor(colorDialog.Color);
-                        UIStyles.RefreshStyles(this);
-                    }
-                }
-            };
-
-            this.Controls.Add(_darkModeToggleBtn);
-            this.Controls.Add(_accentColorBtn);
 
             // Fade-in animation
             this.Opacity = 0;

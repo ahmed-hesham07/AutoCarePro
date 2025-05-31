@@ -2,6 +2,9 @@ using System;
 using System.Windows.Forms;
 using AutoCarePro.Models;
 using AutoCarePro.Services;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace AutoCarePro.Forms
 {
@@ -20,17 +23,19 @@ namespace AutoCarePro.Forms
     /// </summary>
     public partial class RegisterForm : Form
     {
-        // Service for database operations - handles user registration and data persistence
-        private readonly DatabaseService _dbService = new DatabaseService();
+        private readonly DatabaseService _databaseService;
+        private readonly ILogger<RegisterForm> _logger;
 
         /// <summary>
         /// Constructor initializes the registration form.
         /// This is called when creating a new instance of the registration form.
         /// It sets up the database service and initializes the form layout.
         /// </summary>
-        public RegisterForm()
+        public RegisterForm(ILogger<RegisterForm> logger)
         {
             InitializeComponent();
+            _logger = logger;
+            _databaseService = ServiceFactory.GetDatabaseService();
             SetupForm();
         }
 
@@ -172,7 +177,7 @@ namespace AutoCarePro.Forms
                 DropDownStyle = ComboBoxStyle.DropDownList  // Prevents user from typing in the combo box
             };
             // Add user type options to the dropdown
-            cmbUserType.Items.AddRange(new object[] { "Car Owner", "Maintenance Center" });
+            cmbUserType.Items.AddRange(Enum.GetNames(typeof(UserType)));
             cmbUserType.SelectedIndex = 0;  // Select first item by default
 
             // Create and configure the register button
@@ -226,63 +231,75 @@ namespace AutoCarePro.Forms
         private void HandleRegistration(string username, string email, string fullName, string phone,
             string password, string confirmPassword, UserType userType)
         {
-            // Validate that all required fields are filled
-            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(email) ||
-                string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(password))
-            {
-                MessageBox.Show("Please fill in all required fields.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            // Validate that passwords match
-            if (password != confirmPassword)
-            {
-                MessageBox.Show("Passwords do not match.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            // Validate email format using a regular expression
-            if (!IsValidEmail(email))
-            {
-                MessageBox.Show("Please enter a valid email address.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
             try
             {
-                // Create new user object with provided information
+                if (!ValidateInputs())
+                {
+                    return;
+                }
+
                 var user = new User
                 {
                     Username = username,
                     Email = email,
                     FullName = fullName,
                     PhoneNumber = phone,
-                    Password = HashPassword(password),  // Hash the password for security
+                    Password = HashPassword(password),
                     Type = userType,
                     CreatedDate = DateTime.Now
                 };
 
-                // Attempt to register the user in the database
-                if (_dbService.RegisterUser(user))
+                if (_databaseService.RegisterUser(user))
                 {
-                    MessageBox.Show("Registration successful! You can now login.", "Success",
+                    _logger.LogInformation("User {Username} registered successfully", user.Username);
+                    MessageBox.Show("Registration successful! Please login.", "Success", 
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                     this.Close();
                 }
                 else
                 {
-                    MessageBox.Show("Username or email already exists.", "Registration Failed",
+                    _logger.LogWarning("Failed to register user {Username}", user.Username);
+                    MessageBox.Show("Registration failed. Username or email may already exist.", "Error", 
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"An error occurred: {ex.Message}", "Error",
+                _logger.LogError(ex, "Error during registration");
+                MessageBox.Show("An error occurred during registration. Please try again.", "Error", 
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private bool ValidateInputs()
+        {
+            if (string.IsNullOrEmpty(txtUsername.Text) ||
+                string.IsNullOrEmpty(txtEmail.Text) ||
+                string.IsNullOrEmpty(txtFullName.Text) ||
+                string.IsNullOrEmpty(txtPhone.Text) ||
+                string.IsNullOrEmpty(txtPassword.Text) ||
+                string.IsNullOrEmpty(txtConfirmPassword.Text))
+            {
+                MessageBox.Show("Please fill in all fields.", "Validation Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+
+            if (txtPassword.Text != txtConfirmPassword.Text)
+            {
+                MessageBox.Show("Passwords do not match.", "Validation Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+
+            if (!IsValidEmail(txtEmail.Text))
+            {
+                MessageBox.Show("Please enter a valid email address.", "Validation Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -310,9 +327,9 @@ namespace AutoCarePro.Forms
         /// <returns>The hashed password as a base64 string</returns>
         private string HashPassword(string password)
         {
-            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+            using (var sha256 = SHA256.Create())
             {
-                var hashedBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
+                var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
                 return Convert.ToBase64String(hashedBytes);
             }
         }

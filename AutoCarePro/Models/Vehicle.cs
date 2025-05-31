@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace AutoCarePro.Models
 {
@@ -166,6 +167,27 @@ namespace AutoCarePro.Models
         /// Vehicle type (e.g., Car, Truck, SUV, Van, Motorcycle).
         /// </summary>
         public VehicleType Type { get; set; }
+
+        /// <summary>
+        /// Indicates whether the vehicle needs maintenance based on:
+        /// - Last maintenance date
+        /// - Current mileage
+        /// - Maintenance recommendations
+        /// </summary>
+        public bool NeedsMaintenance
+        {
+            get
+            {
+                if (!LastMaintenanceDate.HasValue)
+                    return true;
+
+                var daysSinceLastMaintenance = (DateTime.Now - LastMaintenanceDate.Value).TotalDays;
+                var mileageSinceLastMaintenance = CurrentMileage - (MaintenanceHistory.LastOrDefault()?.Mileage ?? 0);
+
+                // Check if maintenance is needed based on time (6 months) or mileage (5000 km)
+                return daysSinceLastMaintenance >= 180 || mileageSinceLastMaintenance >= 5000;
+            }
+        }
 
         /// <summary>
         /// Constructor for creating a new Vehicle instance.

@@ -4,6 +4,7 @@ using System.Drawing;
 using AutoCarePro.Models;
 using AutoCarePro.Services;
 using AutoCarePro.UI;
+using Microsoft.Extensions.Logging;
 
 namespace AutoCarePro.Forms
 {
@@ -20,10 +21,12 @@ namespace AutoCarePro.Forms
     {
         // Private fields to store form data and services
         private readonly int _userId;                    // Stores the ID of the user who owns the vehicle
-        private readonly DatabaseService _dbService;     // Service for database operations
+        private readonly DatabaseService _databaseService;     // Service for database operations
         private readonly Vehicle? _existingVehicle;       // Reference to existing vehicle if editing
         private int _currentStep = 0;
         private const int TotalSteps = 3;
+        private readonly ILogger<AddVehicleForm> _logger;
+        private readonly User _currentUser;
 
         // Form control fields - these are the UI elements that users interact with
         private TextBox _makeTextBox = new();           // Input field for vehicle manufacturer
@@ -47,19 +50,26 @@ namespace AutoCarePro.Forms
         /// Constructor initializes the vehicle form for adding or editing a vehicle.
         /// This is called when creating a new instance of the form.
         /// </summary>
-        /// <param name="userId">ID of the user who owns the vehicle - used to associate the vehicle with the correct user</param>
-        /// <param name="existingVehicle">Optional existing vehicle to edit - if provided, the form will be in edit mode</param>
-        public AddVehicleForm(int userId, Vehicle? existingVehicle = null)
+        /// <param name="logger">Logger for logging messages</param>
+        public AddVehicleForm(ILogger<AddVehicleForm> logger)
         {
             InitializeComponent();
-            _userId = userId;
-            _existingVehicle = existingVehicle;
-            _dbService = new DatabaseService();
-            InitializeForm();
-            if (existingVehicle != null)
+            _logger = logger;
+            _databaseService = ServiceFactory.GetDatabaseService();
+            _currentUser = SessionManager.CurrentUser;
+
+            if (_currentUser == null)
             {
-                LoadExistingVehicle();
+                _logger.LogError("No user session found");
+                MessageBox.Show("Session expired. Please login again.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                this.Close();
+                return;
             }
+
+            _userId = _currentUser.Id;
+            _existingVehicle = null;
+            SetupForm();
         }
 
         /// <summary>
@@ -67,7 +77,7 @@ namespace AutoCarePro.Forms
         /// This method sets up the visual appearance and structure of the form,
         /// including its size, position, and the arrangement of all UI elements.
         /// </summary>
-        private void InitializeForm()
+        private void SetupForm()
         {
             // Configure basic form properties
             this.Text = "Add Vehicle - Step 1 of 3";
@@ -398,24 +408,27 @@ namespace AutoCarePro.Forms
                     PurchaseDate = _purchaseDatePicker.Value,
                     Notes = _notesTextBox.Text,
                     UserId = _userId,
-                    User = _dbService.GetUserById(_userId)
+                    User = _databaseService.GetUserById(_userId)
                 };
 
                 if (_existingVehicle == null)
                 {
-                    _dbService.AddVehicle(vehicle);
+                    _databaseService.AddVehicle(vehicle);
                 }
                 else
                 {
-                    _dbService.UpdateVehicle(vehicle);
+                    _databaseService.UpdateVehicle(vehicle);
                 }
 
+                _logger.LogInformation("Vehicle added successfully for user {Username}", 
+                    _currentUser.Username);
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error saving vehicle: {ex.Message}", "Error",
+                _logger.LogError(ex, "Error adding vehicle");
+                MessageBox.Show("An error occurred while adding the vehicle.", "Error", 
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

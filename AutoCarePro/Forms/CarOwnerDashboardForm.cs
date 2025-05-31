@@ -6,6 +6,7 @@ using System.Linq;
 using AutoCarePro.Models;
 using AutoCarePro.Services;
 using AutoCarePro.UI;
+using Microsoft.Extensions.Logging;
 
 namespace AutoCarePro.Forms
 {
@@ -20,8 +21,8 @@ namespace AutoCarePro.Forms
     /// </summary>
     public partial class CarOwnerDashboardForm : Form
     {
-        private readonly DatabaseService _dbService;
-        private readonly RecommendationEngine _recommendationEngine;
+        private readonly DatabaseService _databaseService;
+        private readonly ILogger<CarOwnerDashboardForm> _logger;
         private readonly User _currentUser;
 
         // UI Controls
@@ -36,20 +37,45 @@ namespace AutoCarePro.Forms
         private System.Windows.Forms.Timer _fadeInTimer = new System.Windows.Forms.Timer();
         private double _fadeStep = 0.08;
 
-        public CarOwnerDashboardForm(User user)
+        public CarOwnerDashboardForm(ILogger<CarOwnerDashboardForm> logger)
         {
             InitializeComponent();
-            _currentUser = user;
-            _dbService = new DatabaseService();
-            _recommendationEngine = new RecommendationEngine(_dbService);
-            InitializeDashboard();
+            _logger = logger;
+            _databaseService = ServiceFactory.GetDatabaseService();
+            _currentUser = SessionManager.CurrentUser;
+
+            if (_currentUser == null)
+            {
+                _logger.LogError("No user session found");
+                MessageBox.Show("Session expired. Please login again.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                this.Close();
+                return;
+            }
+
+            SetupForm();
         }
 
-        private void InitializeDashboard()
+        private void SetupForm()
         {
+            // Set form title with user's name
+            this.Text = $"Car Owner Dashboard - {_currentUser.Username}";
+
+            // Load user's vehicles
+            LoadVehicles();
+
+            // Load maintenance history
+            LoadMaintenanceHistory();
+
+            // Setup event handlers
+            AddVehicleButton.Click += AddVehicleButton_Click;
+            EditVehicleButton.Click += EditVehicleButton_Click;
+            DeleteVehicleButton.Click += DeleteVehicleButton_Click;
+            ViewMaintenanceButton.Click += ViewMaintenanceButton_Click;
+            LogoutButton.Click += LogoutButton_Click;
+
             // Apply form styling
             UIStyles.ApplyFormStyle(this);
-            this.Text = $"AutoCarePro - Car Owner Dashboard";
             this.Size = new Size(1400, 900);
 
             // Fade-in animation
@@ -99,10 +125,6 @@ namespace AutoCarePro.Forms
 
             // Add main panel to form
             this.Controls.Add(mainPanel);
-
-            // Load initial data
-            LoadVehicleData();
-            LoadRecommendations();
         }
 
         private void InitializeLeftPanel(Panel panel)
@@ -213,12 +235,12 @@ namespace AutoCarePro.Forms
             panel.Controls.Add(alertsPanel);
         }
 
-        private void LoadVehicleData()
+        private void LoadVehicles()
         {
             try
             {
                 _vehicleList.Items.Clear();
-                var vehicles = _dbService.GetVehiclesByUserId(_currentUser.Id);
+                var vehicles = _databaseService.GetVehiclesByOwner(_currentUser.Id);
 
                 foreach (var vehicle in vehicles)
                 {
@@ -235,49 +257,25 @@ namespace AutoCarePro.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error loading vehicles: {ex.Message}", "Error",
+                _logger.LogError(ex, "Error loading vehicles");
+                MessageBox.Show("Error loading vehicles. Please try again.", "Error", 
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void LoadRecommendations()
+        private void LoadMaintenanceHistory()
         {
             try
             {
-                _recommendationsList.Items.Clear();
-                _alertsList.Items.Clear();
-
-                var vehicles = _dbService.GetVehiclesByUserId(_currentUser.Id);
-                var allRecommendations = new List<MaintenanceRecommendation>();
-
-                foreach (var vehicle in vehicles)
-                {
-                    var recommendations = _recommendationEngine.GenerateRecommendations(vehicle.Id);
-                    allRecommendations.AddRange(recommendations);
-                }
-
-                allRecommendations = allRecommendations.OrderByDescending(r => r.Priority).ToList();
-
-                foreach (var recommendation in allRecommendations)
-                {
-                    var item = new ListViewItem(recommendation.Component);
-                    item.SubItems.Add(recommendation.Description);
-                    item.SubItems.Add(recommendation.Priority.ToString());
-                    item.SubItems.Add(recommendation.RecommendedDate.ToShortDateString());
-                    item.Tag = recommendation;
-                    _recommendationsList.Items.Add(item);
-
-                    if (recommendation.Priority == PriorityLevel.Critical)
-                    {
-                        var alertItem = new ListViewItem($"Critical: {recommendation.Description}");
-                        alertItem.SubItems.Add(recommendation.RecommendedDate.ToShortDateString());
-                        _alertsList.Items.Add(alertItem);
-                    }
-                }
+                var history = _databaseService.GetMaintenanceHistoryByOwner(_currentUser.Id);
+                MaintenanceHistoryDataGridView.DataSource = history;
+                _logger.LogInformation("Loaded maintenance history for user {Username}", 
+                    _currentUser.Username);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error loading recommendations: {ex.Message}", "Error",
+                _logger.LogError(ex, "Error loading maintenance history");
+                MessageBox.Show("Error loading maintenance history. Please try again.", "Error", 
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -291,11 +289,10 @@ namespace AutoCarePro.Forms
 
         private void AddVehicleBtn_Click(object sender, EventArgs e)
         {
-            var addVehicleForm = new AddVehicleForm(_currentUser.Id);
+            var addVehicleForm = new AddVehicleForm(_logger);
             if (addVehicleForm.ShowDialog() == DialogResult.OK)
             {
-                LoadVehicleData();
-                LoadRecommendations();
+                LoadVehicles();
             }
         }
 
@@ -307,8 +304,7 @@ namespace AutoCarePro.Forms
                 var addMaintenanceForm = new AddMaintenanceForm(vehicleId, _currentUser);
                 if (addMaintenanceForm.ShowDialog() == DialogResult.OK)
                 {
-                    LoadVehicleData();
-                    LoadRecommendations();
+                    LoadVehicles();
                 }
             }
         }
@@ -318,7 +314,7 @@ namespace AutoCarePro.Forms
             if (_vehicleList.SelectedItems.Count > 0)
             {
                 var vehicleId = (int)_vehicleList.SelectedItems[0].Tag;
-                var historyForm = new MaintenanceHistoryForm(vehicleId);
+                var historyForm = new MaintenanceHistoryForm(vehicleId, _currentUser);
                 historyForm.ShowDialog();
             }
         }
@@ -327,6 +323,94 @@ namespace AutoCarePro.Forms
         {
             var profileForm = new UserProfileForm(_currentUser);
             profileForm.ShowDialog();
+        }
+
+        private void AddVehicleButton_Click(object sender, EventArgs e)
+        {
+            var addVehicleForm = new AddVehicleForm(_logger);
+            if (addVehicleForm.ShowDialog() == DialogResult.OK)
+            {
+                LoadVehicles();
+            }
+        }
+
+        private void EditVehicleButton_Click(object sender, EventArgs e)
+        {
+            if (VehiclesDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a vehicle to edit.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedVehicle = (Vehicle)VehiclesDataGridView.SelectedRows[0].DataBoundItem;
+            var editVehicleForm = new EditVehicleForm(_logger, selectedVehicle);
+            if (editVehicleForm.ShowDialog() == DialogResult.OK)
+            {
+                LoadVehicles();
+            }
+        }
+
+        private void DeleteVehicleButton_Click(object sender, EventArgs e)
+        {
+            if (VehiclesDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a vehicle to delete.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedVehicle = (Vehicle)VehiclesDataGridView.SelectedRows[0].DataBoundItem;
+            var result = MessageBox.Show(
+                $"Are you sure you want to delete {selectedVehicle.Make} {selectedVehicle.Model}?",
+                "Confirm Delete",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                try
+                {
+                    if (_databaseService.DeleteVehicle(selectedVehicle.Id))
+                    {
+                        _logger.LogInformation("Vehicle {VehicleId} deleted successfully", selectedVehicle.Id);
+                        LoadVehicles();
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to delete vehicle {VehicleId}", selectedVehicle.Id);
+                        MessageBox.Show("Failed to delete vehicle. Please try again.", "Error", 
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error deleting vehicle {VehicleId}", selectedVehicle.Id);
+                    MessageBox.Show("An error occurred while deleting the vehicle.", "Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void ViewMaintenanceButton_Click(object sender, EventArgs e)
+        {
+            if (MaintenanceHistoryDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a maintenance record to view.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedRecord = (MaintenanceRecord)MaintenanceHistoryDataGridView.SelectedRows[0].DataBoundItem;
+            var viewMaintenanceForm = new ViewMaintenanceForm(_logger, selectedRecord);
+            viewMaintenanceForm.ShowDialog();
+        }
+
+        private void LogoutButton_Click(object sender, EventArgs e)
+        {
+            SessionManager.EndSession();
+            _logger.LogInformation("User {Username} logged out", _currentUser.Username);
+            this.Close();
         }
     }
 } 

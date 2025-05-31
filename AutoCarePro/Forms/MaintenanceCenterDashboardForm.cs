@@ -6,6 +6,7 @@ using System.Linq;
 using AutoCarePro.Models;
 using AutoCarePro.Services;
 using AutoCarePro.UI;
+using Microsoft.Extensions.Logging;
 
 namespace AutoCarePro.Forms
 {
@@ -20,8 +21,8 @@ namespace AutoCarePro.Forms
     /// </summary>
     public partial class MaintenanceCenterDashboardForm : Form
     {
-        private readonly DatabaseService _dbService;
-        private readonly RecommendationEngine _recommendationEngine;
+        private readonly DatabaseService _databaseService;
+        private readonly ILogger<MaintenanceCenterDashboardForm> _logger;
         private readonly User _currentUser;
 
         // UI Controls
@@ -38,69 +39,49 @@ namespace AutoCarePro.Forms
         private TextBox _searchUsernameTextBox = new TextBox();
         private Button _searchUsernameBtn = new Button();
         private ToolTip _toolTip = new ToolTip();
-        private Button _darkModeToggleBtn = new Button();
-        private Button _accentColorBtn = new Button();
         private System.Windows.Forms.Timer _fadeInTimer = new System.Windows.Forms.Timer();
         private double _fadeStep = 0.08;
 
-        public MaintenanceCenterDashboardForm(User user)
+        public MaintenanceCenterDashboardForm(ILogger<MaintenanceCenterDashboardForm> logger)
         {
             InitializeComponent();
-            _currentUser = user;
-            _dbService = new DatabaseService();
-            _recommendationEngine = new RecommendationEngine(_dbService);
-            InitializeDashboard();
+            _logger = logger;
+            _databaseService = ServiceFactory.GetDatabaseService();
+            _currentUser = SessionManager.CurrentUser;
+
+            if (_currentUser == null)
+            {
+                _logger.LogError("No user session found");
+                MessageBox.Show("Session expired. Please login again.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                this.Close();
+                return;
+            }
+
+            SetupForm();
         }
 
-        private void InitializeDashboard()
+        private void SetupForm()
         {
+            // Set form title with center's name
+            this.Text = $"Maintenance Center Dashboard - {_currentUser.Username}";
+
+            // Load pending appointments
+            LoadPendingAppointments();
+
+            // Load maintenance history
+            LoadMaintenanceHistory();
+
+            // Setup event handlers
+            AcceptAppointmentButton.Click += AcceptAppointmentButton_Click;
+            RejectAppointmentButton.Click += RejectAppointmentButton_Click;
+            CompleteMaintenanceButton.Click += CompleteMaintenanceButton_Click;
+            ViewHistoryButton.Click += ViewHistoryButton_Click;
+            LogoutButton.Click += LogoutButton_Click;
+
             // Apply form styling
             UIStyles.ApplyFormStyle(this);
-            this.Text = $"AutoCarePro - Maintenance Center Dashboard";
             this.Size = new Size(1400, 900);
-
-            // Add dark mode toggle and accent color picker (top-right)
-            _darkModeToggleBtn = new Button
-            {
-                Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙",
-                Width = 40,
-                Height = 40,
-                Top = 10,
-                Left = this.ClientSize.Width - 100,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            UIStyles.ApplyButtonStyle(_darkModeToggleBtn, true);
-            _darkModeToggleBtn.Click += (s, e) => {
-                ThemeManager.Instance.IsDarkMode = !ThemeManager.Instance.IsDarkMode;
-                _darkModeToggleBtn.Text = ThemeManager.Instance.IsDarkMode ? "☀️" : "🌙";
-                ThemeManager.Instance.ApplyTheme(this);
-                UIStyles.RefreshStyles(this);
-            };
-
-            _accentColorBtn = new Button
-            {
-                Text = "🎨",
-                Width = 40,
-                Height = 40,
-                Top = 10,
-                Left = this.ClientSize.Width - 50,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            UIStyles.ApplyButtonStyle(_accentColorBtn, true);
-            _accentColorBtn.Click += (s, e) => {
-                using (var colorDialog = new ColorDialog())
-                {
-                    colorDialog.Color = ThemeManager.Instance.AccentColor;
-                    if (colorDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        ThemeManager.Instance.SetAccentColor(colorDialog.Color);
-                        UIStyles.RefreshStyles(this);
-                    }
-                }
-            };
-
-            this.Controls.Add(_darkModeToggleBtn);
-            this.Controls.Add(_accentColorBtn);
 
             // Fade-in animation
             this.Opacity = 0;
@@ -342,7 +323,7 @@ namespace AutoCarePro.Forms
             try
             {
                 _vehicleList.Items.Clear();
-                var vehicles = _dbService.GetAllVehicles(); // Get all vehicles for maintenance center
+                var vehicles = _databaseService.GetAllVehicles(); // Get all vehicles for maintenance center
                 if (!string.IsNullOrWhiteSpace(usernameFilter))
                 {
                     vehicles = vehicles.Where(v => v.User != null && v.User.Username != null && v.User.Username.ToLower().Contains(usernameFilter.ToLower())).ToList();
@@ -370,7 +351,7 @@ namespace AutoCarePro.Forms
             try
             {
                 _maintenanceList.Items.Clear();
-                var records = _dbService.GetRecentMaintenanceRecords(10); // Get last 10 records
+                var records = _databaseService.GetRecentMaintenanceRecords(10); // Get last 10 records
 
                 foreach (var record in records)
                 {
@@ -395,7 +376,7 @@ namespace AutoCarePro.Forms
             try
             {
                 _appointmentsList.Items.Clear();
-                var appointments = _dbService.GetUpcomingAppointments(_currentUser.Id);
+                var appointments = _databaseService.GetUpcomingAppointments(_currentUser.Id);
 
                 foreach (var appointment in appointments)
                 {
@@ -463,7 +444,7 @@ namespace AutoCarePro.Forms
             if (_vehicleList.SelectedItems.Count > 0)
             {
                 var vehicleId = (int)_vehicleList.SelectedItems[0].Tag;
-                var historyForm = new MaintenanceHistoryForm(vehicleId);
+                var historyForm = new MaintenanceHistoryForm(vehicleId, _currentUser);
                 historyForm.ShowDialog();
             }
         }
@@ -476,14 +457,178 @@ namespace AutoCarePro.Forms
 
         private void AddAppointmentBtn_Click(object sender, EventArgs e)
         {
-            // Implement appointment creation form
-            MessageBox.Show("Appointment creation feature coming soon!", "Feature Preview",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (_vehicleList.SelectedItems.Count > 0)
+            {
+                var vehicleId = (int)_vehicleList.SelectedItems[0].Tag;
+                var addAppointmentForm = new AddAppointmentForm(vehicleId, _currentUser);
+                if (addAppointmentForm.ShowDialog() == DialogResult.OK)
+                {
+                    LoadAppointments();
+                }
+            }
+            else
+            {
+                MessageBox.Show("Please select a vehicle first.", "No Vehicle Selected", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void SearchUsernameBtn_Click(object sender, EventArgs e)
         {
             LoadVehicleData(_searchUsernameTextBox.Text.Trim());
+        }
+
+        private void LoadPendingAppointments()
+        {
+            try
+            {
+                var appointments = _databaseService.GetPendingAppointmentsByCenter(_currentUser.Id);
+                PendingAppointmentsDataGridView.DataSource = appointments;
+                _logger.LogInformation("Loaded {Count} pending appointments for center {CenterId}", 
+                    appointments.Count, _currentUser.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading pending appointments");
+                MessageBox.Show("Error loading pending appointments. Please try again.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void LoadMaintenanceHistory()
+        {
+            try
+            {
+                var history = _databaseService.GetMaintenanceHistoryByCenter(_currentUser.Id);
+                MaintenanceHistoryDataGridView.DataSource = history;
+                _logger.LogInformation("Loaded maintenance history for center {CenterId}", 
+                    _currentUser.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading maintenance history");
+                MessageBox.Show("Error loading maintenance history. Please try again.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void AcceptAppointmentButton_Click(object sender, EventArgs e)
+        {
+            if (PendingAppointmentsDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select an appointment to accept.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedAppointment = (Appointment)PendingAppointmentsDataGridView.SelectedRows[0].DataBoundItem;
+            try
+            {
+                if (_databaseService.AcceptAppointment(selectedAppointment.Id))
+                {
+                    _logger.LogInformation("Appointment {AppointmentId} accepted successfully", 
+                        selectedAppointment.Id);
+                    LoadPendingAppointments();
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to accept appointment {AppointmentId}", 
+                        selectedAppointment.Id);
+                    MessageBox.Show("Failed to accept appointment. Please try again.", "Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error accepting appointment {AppointmentId}", 
+                    selectedAppointment.Id);
+                MessageBox.Show("An error occurred while accepting the appointment.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void RejectAppointmentButton_Click(object sender, EventArgs e)
+        {
+            if (PendingAppointmentsDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select an appointment to reject.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedAppointment = (Appointment)PendingAppointmentsDataGridView.SelectedRows[0].DataBoundItem;
+            var reason = Microsoft.VisualBasic.Interaction.InputBox(
+                "Please enter the reason for rejection:", 
+                "Reject Appointment", 
+                "");
+
+            if (string.IsNullOrEmpty(reason))
+            {
+                return;
+            }
+
+            try
+            {
+                if (_databaseService.RejectAppointment(selectedAppointment.Id, reason))
+                {
+                    _logger.LogInformation("Appointment {AppointmentId} rejected successfully", 
+                        selectedAppointment.Id);
+                    LoadPendingAppointments();
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to reject appointment {AppointmentId}", 
+                        selectedAppointment.Id);
+                    MessageBox.Show("Failed to reject appointment. Please try again.", "Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error rejecting appointment {AppointmentId}", 
+                    selectedAppointment.Id);
+                MessageBox.Show("An error occurred while rejecting the appointment.", "Error", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void CompleteMaintenanceButton_Click(object sender, EventArgs e)
+        {
+            if (PendingAppointmentsDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a maintenance record to complete.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedRecord = (MaintenanceRecord)PendingAppointmentsDataGridView.SelectedRows[0].DataBoundItem;
+            var completeMaintenanceForm = new CompleteMaintenanceForm(_logger, selectedRecord);
+            if (completeMaintenanceForm.ShowDialog() == DialogResult.OK)
+            {
+                LoadPendingAppointments();
+                LoadMaintenanceHistory();
+            }
+        }
+
+        private void ViewHistoryButton_Click(object sender, EventArgs e)
+        {
+            if (MaintenanceHistoryDataGridView.SelectedRows.Count == 0)
+            {
+                MessageBox.Show("Please select a maintenance record to view.", "Information", 
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var selectedRecord = (MaintenanceRecord)MaintenanceHistoryDataGridView.SelectedRows[0].DataBoundItem;
+            var viewMaintenanceForm = new ViewMaintenanceForm(_logger, selectedRecord);
+            viewMaintenanceForm.ShowDialog();
+        }
+
+        private void LogoutButton_Click(object sender, EventArgs e)
+        {
+            SessionManager.EndSession();
+            _logger.LogInformation("User {Username} logged out", _currentUser.Username);
+            this.Close();
         }
     }
 } 

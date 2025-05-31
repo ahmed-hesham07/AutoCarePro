@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("AutoCarePro")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+401399e1f953bd11aa85b3079aacac9125e27d73")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+548312b4399eeb3539c617129a5d9f27cbd0cdf8")]
 [assembly: System.Reflection.AssemblyProductAttribute("AutoCarePro")]
 [assembly: System.Reflection.AssemblyTitleAttribute("AutoCarePro")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

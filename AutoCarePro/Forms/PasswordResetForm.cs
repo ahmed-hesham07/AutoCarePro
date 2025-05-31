@@ -1,6 +1,10 @@
 using System;
 using System.Windows.Forms;
 using AutoCarePro.Services;
+using AutoCarePro.Models;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace AutoCarePro.Forms
 {
@@ -19,20 +23,18 @@ namespace AutoCarePro.Forms
     /// </summary>
     public partial class PasswordResetForm : Form
     {
-        // Core data fields for password reset management
-        private readonly DatabaseService _dbService;  // Service for database operations
-        private string _resetToken = string.Empty;      // Token used for password reset verification
-        private string _email = string.Empty;           // Email address of the user requesting reset
+        private readonly DatabaseService _databaseService;
+        private readonly ILogger<PasswordResetForm> _logger;
 
         /// <summary>
         /// Initializes the password reset form.
         /// This constructor sets up the form and prepares it for handling reset requests.
         /// </summary>
-        public PasswordResetForm()
+        public PasswordResetForm(ILogger<PasswordResetForm> logger)
         {
             InitializeComponent();
-            _dbService = new DatabaseService();
-            SetupForm();
+            _logger = logger;
+            _databaseService = ServiceFactory.GetDatabaseService();
         }
 
         /// <summary>
@@ -121,7 +123,7 @@ namespace AutoCarePro.Forms
             try
             {
                 // Attempt to request password reset through database service
-                if (_dbService.RequestPasswordReset(email))
+                if (_databaseService.RequestPasswordReset(email))
                 {
                     // Success message with instructions
                     MessageBox.Show("Password reset instructions have been sent to your email.", "Success",
@@ -140,6 +142,69 @@ namespace AutoCarePro.Forms
                 // Handle any unexpected errors
                 MessageBox.Show($"An error occurred: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ResetButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string email = EmailTextBox.Text;
+                string newPassword = NewPasswordTextBox.Text;
+                string confirmPassword = ConfirmPasswordTextBox.Text;
+
+                if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(newPassword) || string.IsNullOrEmpty(confirmPassword))
+                {
+                    MessageBox.Show("Please fill in all fields.", "Validation Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (newPassword != confirmPassword)
+                {
+                    MessageBox.Show("Passwords do not match.", "Validation Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var user = _databaseService.GetUserByEmail(email);
+                if (user == null)
+                {
+                    _logger.LogWarning("Password reset attempted for non-existent email: {Email}", email);
+                    MessageBox.Show("No account found with this email address.", "Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                user.Password = HashPassword(newPassword);
+                if (_databaseService.UpdateUser(user))
+                {
+                    _logger.LogInformation("Password reset successful for user {Username}", user.Username);
+                    MessageBox.Show("Password has been reset successfully. Please login with your new password.", 
+                        "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    this.Close();
+                }
+                else
+                {
+                    _logger.LogError("Failed to update password for user {Username}", user.Username);
+                    MessageBox.Show("Failed to reset password. Please try again.", "Error", 
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during password reset");
+                MessageBox.Show("An error occurred while resetting your password. Please try again.", 
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private string HashPassword(string password)
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+                return Convert.ToBase64String(hashedBytes);
             }
         }
     }
